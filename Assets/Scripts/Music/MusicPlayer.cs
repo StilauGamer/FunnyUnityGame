@@ -1,11 +1,13 @@
 using System;
 using System.Collections;
+using Mirror;
 using UnityEngine;
 
 namespace Music
 {
-    public class MusicPlayer : MonoBehaviour
+    public class MusicPlayer : NetworkBehaviour
     {
+        [SyncVar(hook = nameof(OnPlayingChanged))]
         private bool _playing;
         private AudioSource _audioSource;
         
@@ -16,35 +18,33 @@ namespace Music
 
         private void OnMouseOver()
         {
-            if (Input.GetKeyDown(KeyCode.F))
+            if (isClient && Input.GetKeyDown(KeyCode.F))
             {
                 ToggleMusic();
             }
         }
 
-
-        public bool IsPlaying()
-        {
-            return _playing;
-        }
-
+        [Command(requiresAuthority = false)]
         public void ToggleMusic()
         {
-            if (_playing)
-            {
-                _playing = false;
-                _audioSource.Stop();
-                
-                StartCoroutine(MoveButtonUp());
-                return;
-            }
-            
-            
-            _playing = true;
-            _audioSource.Play();
-            
-            StartCoroutine(MoveButtonDown());
+            _playing = !_playing;
         }
+
+        private void OnPlayingChanged(bool oldPlaying, bool newPlaying)
+        {
+            if (newPlaying)
+            {
+                _audioSource.Play();
+                StartCoroutine(MoveButtonDown());
+            }
+            else
+            {
+                _audioSource.Stop();
+                StartCoroutine(MoveButtonUp());
+            }
+        }
+        
+        
 
         IEnumerator MoveButtonUp()
         {
