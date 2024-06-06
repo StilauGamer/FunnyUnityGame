@@ -25,6 +25,21 @@ namespace Player
             _camera.transform.SetParent(transform);
             _camera.transform.position = transform.position + new Vector3(0, 0.6f, 0);
             _camera.transform.rotation = transform.rotation;
+
+            if (!isLocalPlayer)
+            {
+                return;
+            }
+            
+            foreach (Transform child in transform)
+            {
+                if (child.gameObject == _camera.gameObject)
+                {
+                    continue;
+                }
+
+                child.gameObject.SetActive(false);
+            }
         }
 
         public override void OnStopClient()
@@ -47,6 +62,11 @@ namespace Player
             var mouseY = Input.GetAxis("Mouse Y");
 
             transform.Rotate(0, mouseX * 5f, 0);
+            
+            _localRotationX += -mouseY * 5f;
+            _localRotationX = Mathf.Clamp(_localRotationX, -90f, 90f);
+            
+            _camera.transform.localRotation = Quaternion.Euler(_localRotationX, 0, 0);
         }
     }
 }
