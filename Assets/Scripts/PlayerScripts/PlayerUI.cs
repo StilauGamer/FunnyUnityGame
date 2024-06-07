@@ -1,6 +1,7 @@
 ﻿using Mirror;
 using TMPro;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace PlayerScripts
 {
@@ -11,8 +12,17 @@ namespace PlayerScripts
         private GameObject deathScreenPrefab;
         private GameObject _deathScreen;
         
+        [SerializeField]
+        private GameObject emergencyScreenPrefab;
+        private GameObject _emergencyScreen;
         
-        private TMP_Text _speedText;
+        [SerializeField]
+        private GameObject reportButtonPrefab;
+        private GameObject _reportButton;
+        
+        private GameObject _canvas;
+        
+        
         private Player _player;
         private NetworkIdentity _networkIdentity;
 
@@ -31,20 +41,51 @@ namespace PlayerScripts
                 return;
             }
             
-            
-            
+            InitializeUI();
+        }
+
+        public override void OnStopClient()
+        {
+            Destroy(_canvas);
+        }
+
+        [Client]
+        private void InitializeUI()
+        {
             _player = GetComponent<Player>();
-            var canvas = GameObject.Find("Canvas"); 
-            
-            _deathScreen = Instantiate(deathScreenPrefab, canvas.transform);
-            _deathScreen.SetActive(false);
+            _canvas = GameObject.Find("Canvas"); 
+
+            var currentScene = SceneManager.GetActiveScene().name;
+            switch (currentScene)
+            {
+                case "GameScene":
+                    if (_deathScreen)
+                    {
+                        break;
+                    }
+                    
+                    _deathScreen = Instantiate(deathScreenPrefab, _canvas.transform);
+                    _deathScreen.SetActive(false);
+                    
+                    _reportButton = Instantiate(reportButtonPrefab, _canvas.transform);
+                    _reportButton.SetActive(false);
+                    break;
+                
+                case "LobbyScene":
+                    if (_emergencyScreen)
+                    {
+                        break;
+                    }
+                    
+                    _emergencyScreen = Instantiate(emergencyScreenPrefab, _canvas.transform);
+                    break;
+            }
         }
 
         public void ToggleDeathScreen(bool isDead)
         {
             if (!_deathScreen)
             {
-                Debug.LogError("Death screen not found");
                 return;
             }
             
@@ -53,12 +94,19 @@ namespace PlayerScripts
         
         private void Update()
         {
-            if (!isLocalPlayer || !_speedText)
+            if (!isLocalPlayer)
             {
                 return;
             }
             
-            _speedText.text = $"Speed: {_player.playerMovement.CurrentSpeed}";
+            var closestPlayer = _player.FindClosestPlayer(_player.gameObject, true);
+            if (!closestPlayer)
+            {
+                _reportButton.SetActive(false);
+                return;
+            }
+
+            _reportButton.SetActive(true);
         }
     }
 }

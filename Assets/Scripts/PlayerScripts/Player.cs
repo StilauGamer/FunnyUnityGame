@@ -61,7 +61,7 @@ namespace PlayerScripts
                 return;
             }
             
-            if (mogusAlive == null || mogusDead == null)
+            if (!mogusAlive || !mogusDead)
             {
                 Debug.LogError("Mogus model not found");
                 return;
@@ -144,17 +144,16 @@ namespace PlayerScripts
             IsDead = true;
             RpcToggleDeathScreen(true);
         }
-
-        [Server]
-        private Player FindClosestPlayer(GameObject self)
+        
+        public Player FindClosestPlayer(GameObject self, bool shouldBeDead = false)
         {
             Player closestPlayer = null;
-            var closestDistance = float.MaxValue;
+            var closestDistance = 3f;
             
             var players = FindObjectsByType<Player>(FindObjectsSortMode.None);
             foreach (var player in players)
             {
-                if (player.gameObject == self)
+                if (player.gameObject == self || player.IsDead != shouldBeDead)
                 {
                     continue;
                 }
