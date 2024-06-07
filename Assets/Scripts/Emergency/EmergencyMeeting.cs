@@ -1,4 +1,6 @@
-﻿using Mirror;
+﻿using System.Collections;
+using System.Linq;
+using Mirror;
 using PlayerScripts;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -34,15 +36,21 @@ namespace Emergency
         
         
         [Command(requiresAuthority = false)]
-        public void ToggleMeeting(bool meetingActive)
+        public void ToggleMeeting(bool meetingActive, NetworkConnectionToClient reporter = null, NetworkConnectionToClient killed = null)
         {
             if (!meetingActive)
             {
                 StartMeeting();
+                
+                PlayerReporting = reporter?.connectionId ?? -1;
+                PlayerKilled = killed?.connectionId ?? -1;
             }
             else
             {
                 EndMeeting();
+                
+                PlayerReporting = -1;
+                PlayerKilled = -1;
             }
         }
 
@@ -76,6 +84,28 @@ namespace Emergency
             }
 
             SceneManager.sceneLoaded -= OnSceneLoaded;
+            StartCoroutine(UpdateAllUIs());
+        }
+
+        private IEnumerator UpdateAllUIs()
+        {
+            yield return new WaitUntil(() =>
+            {
+                var players = FindObjectsOfType<Player>();
+                Debug.Log("Players: " + players.Length);
+                return players.Length == NetworkServer.connections.Count;
+            });
+            
+            // Have to figure out a better way to do this...
+            // I have to wait for the players to be spawned before updating the UI
+            // Otherwise, the UI won't be updated, or it will be updated with the wrong data
+            yield return new WaitForSeconds(1f);
+            
+            var players = FindObjectsOfType<Player>();
+            foreach (var player in players)
+            {
+                player.playerUI.CmdUpdateUI();
+            }
         }
     }
 }

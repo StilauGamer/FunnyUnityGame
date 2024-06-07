@@ -85,12 +85,8 @@ namespace PlayerScripts
             }
             
             
-            yield return new WaitForSeconds(5f);
-            
-            EmergencyMeeting.instance.PlayerReporting = player.connectionToClient.connectionId;
-            EmergencyMeeting.instance.PlayerKilled = playerKilled.connectionToClient.connectionId;
-            
-            EmergencyMeeting.instance.ToggleMeeting(false);
+            yield return new WaitForSeconds(2.5f);
+            EmergencyMeeting.instance.ToggleMeeting(false, player.connectionToClient, playerKilled.connectionToClient);
         }
     }
 }

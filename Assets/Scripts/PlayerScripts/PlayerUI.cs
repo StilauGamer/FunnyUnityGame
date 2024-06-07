@@ -1,4 +1,6 @@
-﻿using System.Linq;
+﻿using System;
+using System.Collections;
+using System.Linq;
 using Emergency;
 using Mirror;
 using TMPro;
@@ -47,7 +49,8 @@ namespace PlayerScripts
                 return;
             }
             
-            InitializeUI();
+            _player = GetComponent<Player>();
+            StartCoroutine(InitializeUI());
         }
 
         public override void OnStopClient()
@@ -56,62 +59,62 @@ namespace PlayerScripts
         }
 
         [Client]
-        private void InitializeUI()
+        private IEnumerator InitializeUI()
         {
-            _player = GetComponent<Player>();
+            yield return new WaitForSeconds(0.1f);
             _canvas = GameObject.Find("Canvas"); 
 
             var currentScene = SceneManager.GetActiveScene().name;
+            Debug.Log("Current Scene: " + currentScene);
             switch (currentScene)
             {
                 case "GameScene":
-                    if (_deathScreen)
-                    {
-                        break;
-                    }
-                    
-                    _deathScreen = Instantiate(deathScreenPrefab, _canvas.transform);
-                    _deathScreen.SetActive(false);
-                    
-                    _reportButton = Instantiate(reportButtonPrefab, _canvas.transform);
-                    _reportButton.SetActive(false);
-                    
-                    _bodyReportedScreen = Instantiate(bodyReportedPrefab, _canvas.transform);
-                    _bodyReportedScreen.SetActive(false);
+                    Debug.Log("Setting up game UI");
+                    SetupGameUI();
                     break;
                 
                 case "LobbyScene":
-                    if (_emergencyScreen)
-                    {
-                        break;
-                    }
-                    
-                    _emergencyScreen = Instantiate(emergencyScreenPrefab, _canvas.transform);
-                    var texts = _emergencyScreen.GetComponentsInChildren<TMP_Text>();
-                    foreach (var text in texts)
-                    {
-                        Debug.Log("Text Name: " + text.name);
-                        if (text.name != "EmergencyTitle")
-                        {
-                            continue;
-                        }
-                
-                        var playerKilledNetId = EmergencyMeeting.instance.PlayerKilled;
-                        
-                        var players = FindObjectsOfType<Player>();
-                        var playerKilled = players.FirstOrDefault(p => p.connectionToClient.connectionId == playerKilledNetId);
-                        
-                        if (!playerKilled)
-                        {
-                            text.text = "Emergency Meeting - No body reported";
-                            continue;
-                        }
-
-                        text.text = "Emergency Meeting - " + playerKilled.name;
-                    }
+                    Debug.Log("Setting up lobby UI");
+                    SetupLobbyUI();
                     break;
             }
         }
+
+        [Client]
+        private void SetupGameUI()
+        {
+            if (!_deathScreen)
+            {
+                _deathScreen = Instantiate(deathScreenPrefab, _canvas.transform);
+                _deathScreen.SetActive(false);
+            }
+
+            if (!_reportButton)
+            {
+                _reportButton = Instantiate(reportButtonPrefab, _canvas.transform);
+                _reportButton.SetActive(false);
+            }
+
+            if (!_bodyReportedScreen)
+            {
+                _bodyReportedScreen = Instantiate(bodyReportedPrefab, _canvas.transform);
+                _bodyReportedScreen.SetActive(false);
+            }
+        }
+
+        [Client]
+        private void SetupLobbyUI()
+        {
+            if (_emergencyScreen)
+            {
+                return;
+            }
+            
+            Debug.Log("Setting up emergency screen");
+            _emergencyScreen = Instantiate(emergencyScreenPrefab, _canvas.transform);
+        }
+        
+        
         
         public void ToggleBodyReportedScreen(bool isReported)
         {
@@ -153,6 +156,49 @@ namespace PlayerScripts
             }
 
             _reportButton.SetActive(true);
+        }
+
+        
+        [Command(requiresAuthority = false)]
+        public void CmdUpdateUI()
+        {
+            var playerKilledConnectionId = EmergencyMeeting.instance.PlayerKilled;
+            if (!NetworkServer.connections.TryGetValue(playerKilledConnectionId, out var playerKilledConnection))
+            {
+                return;
+            }
+            
+            var playerKilled = playerKilledConnection.identity.GetComponent<Player>();
+            if (!playerKilled)
+            {
+                Debug.LogError("Player not found");
+                return;
+            }
+            
+            Debug.Log("Updating UI - Server");
+            RpcUpdateUI(playerKilled);
+        }
+        
+        [ClientRpc]
+        private void RpcUpdateUI(Player playerKilled)
+        {
+            Debug.Log("Updating UI - Client");
+            if (!_emergencyScreen)
+            {
+                Debug.LogError("Emergency screen not found");
+                return;
+            }
+            
+            var textComponents = _emergencyScreen.GetComponentsInChildren<TMP_Text>();
+            foreach (var text in textComponents)
+            {
+                if (text.name != "EmergencyTitle")
+                {
+                    continue;
+                }
+                
+                text.text = "Emergency Meeting - " + playerKilled.DisplayName;
+            }
         }
     }
 }

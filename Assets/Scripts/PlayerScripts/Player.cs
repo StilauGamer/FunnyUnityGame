@@ -17,6 +17,7 @@ namespace PlayerScripts
 
         [SyncVar(hook = nameof(OnDeathChanged))]
         internal bool IsDead;
+        [SyncVar]
         internal string DisplayName;
         
         
