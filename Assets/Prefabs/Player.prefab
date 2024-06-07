@@ -278,6 +278,7 @@ MonoBehaviour:
   deathScreenPrefab: {fileID: 3988374838579366153, guid: 0d1ae163af5508044aae4e34a2c39a5b, type: 3}
   emergencyScreenPrefab: {fileID: 1587681127817310369, guid: 4b8d01207589c18419200731d865e441, type: 3}
   reportButtonPrefab: {fileID: 2351058581923204280, guid: bf6d9ef1af99b8c4c802adeb15e78cfa, type: 3}
+  bodyReportedPrefab: {fileID: 5876036900915210665, guid: b89d59e2deb80f640b073a371a592933, type: 3}
 --- !u!54 &7326816817493450288
 Rigidbody:
   m_ObjectHideFlags: 0

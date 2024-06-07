@@ -56,11 +56,15 @@ namespace PlayerScripts
         [Command]
         private void ReportBody()
         {
+            #if UNITY_EDITOR
+            var closestPlayer = player;
+            #else
             var closestPlayer = player.FindClosestPlayer(player.gameObject, true);
             if (!closestPlayer)
             {
                 return;
             }
+            #endif
 
             RpcReportBody(closestPlayer);
         }
@@ -73,12 +77,20 @@ namespace PlayerScripts
 
         private IEnumerator StartReportedBody(Player playerKilled)
         {
-            Debug.Log("Show UI for reporting body!!!");
-            yield return new WaitForSeconds(1.5f);
-            EmergencyMeeting.Instance.PlayerReporting = player;
-            EmergencyMeeting.Instance.PlayerKilled = playerKilled;
+            var players = FindObjectsByType<Player>(FindObjectsSortMode.None);
+            foreach (var otherClient in players)
+            {
+                otherClient.playerUI.ToggleBodyReportedScreen(true);
+                yield return null;
+            }
             
-            EmergencyMeeting.Instance.ToggleMeeting(false);
+            
+            yield return new WaitForSeconds(5f);
+            
+            EmergencyMeeting.instance.PlayerReporting = player.connectionToClient.connectionId;
+            EmergencyMeeting.instance.PlayerKilled = playerKilled.connectionToClient.connectionId;
+            
+            EmergencyMeeting.instance.ToggleMeeting(false);
         }
     }
 }

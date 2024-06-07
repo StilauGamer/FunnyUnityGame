@@ -1,4 +1,6 @@
-﻿using Mirror;
+﻿using System.Linq;
+using Emergency;
+using Mirror;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -19,9 +21,13 @@ namespace PlayerScripts
         [SerializeField]
         private GameObject reportButtonPrefab;
         private GameObject _reportButton;
+
+        [SerializeField]
+        private GameObject bodyReportedPrefab;
+        private GameObject _bodyReportedScreen;
         
         private GameObject _canvas;
-        
+
         
         private Player _player;
         private NetworkIdentity _networkIdentity;
@@ -69,6 +75,9 @@ namespace PlayerScripts
                     
                     _reportButton = Instantiate(reportButtonPrefab, _canvas.transform);
                     _reportButton.SetActive(false);
+                    
+                    _bodyReportedScreen = Instantiate(bodyReportedPrefab, _canvas.transform);
+                    _bodyReportedScreen.SetActive(false);
                     break;
                 
                 case "LobbyScene":
@@ -78,8 +87,40 @@ namespace PlayerScripts
                     }
                     
                     _emergencyScreen = Instantiate(emergencyScreenPrefab, _canvas.transform);
+                    var texts = _emergencyScreen.GetComponentsInChildren<TMP_Text>();
+                    foreach (var text in texts)
+                    {
+                        Debug.Log("Text Name: " + text.name);
+                        if (text.name != "EmergencyTitle")
+                        {
+                            continue;
+                        }
+                
+                        var playerKilledNetId = EmergencyMeeting.instance.PlayerKilled;
+                        
+                        var players = FindObjectsOfType<Player>();
+                        var playerKilled = players.FirstOrDefault(p => p.connectionToClient.connectionId == playerKilledNetId);
+                        
+                        if (!playerKilled)
+                        {
+                            text.text = "Emergency Meeting - No body reported";
+                            continue;
+                        }
+
+                        text.text = "Emergency Meeting - " + playerKilled.name;
+                    }
                     break;
             }
+        }
+        
+        public void ToggleBodyReportedScreen(bool isReported)
+        {
+            if (!_bodyReportedScreen)
+            {
+                return;
+            }
+            
+            _bodyReportedScreen.SetActive(isReported);
         }
 
         public void ToggleDeathScreen(bool isDead)
@@ -95,6 +136,11 @@ namespace PlayerScripts
         private void Update()
         {
             if (!isLocalPlayer)
+            {
+                return;
+            }
+
+            if (!_reportButton)
             {
                 return;
             }

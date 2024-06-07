@@ -7,22 +7,22 @@ namespace Emergency
 {
     public class EmergencyMeeting : NetworkBehaviour
     {
-        public static EmergencyMeeting Instance;
+        public static EmergencyMeeting instance;
         
         [SyncVar]
-        internal bool MeetingActive;
+        private bool _meetingActive;
         
         [SyncVar]
-        internal Player PlayerReporting;
+        internal int PlayerReporting;
         
         [SyncVar]
-        internal Player PlayerKilled;
+        internal int PlayerKilled;
 
         public override void OnStartServer()
         {
-            if (!Instance)
+            if (!instance)
             {
-                Instance = this;
+                instance = this;
                 DontDestroyOnLoad(gameObject);
             }
             else
@@ -49,7 +49,7 @@ namespace Emergency
         [Server]
         public void StartMeeting()
         {
-            MeetingActive = true;
+            _meetingActive = true;
             SceneManager.sceneLoaded += OnSceneLoaded;
             NetworkManager.singleton.ServerChangeScene("LobbyScene");
         }
@@ -58,7 +58,7 @@ namespace Emergency
         [Server]
         public void EndMeeting()
         {
-            MeetingActive = false;
+            _meetingActive = false;
             SceneManager.sceneLoaded += OnSceneLoaded;
             NetworkManager.singleton.ServerChangeScene("GameScene");
         }
@@ -70,7 +70,7 @@ namespace Emergency
                 Debug.Log("Scene loaded: " + scene.name);
             }
             
-            if ((!MeetingActive || scene.name != "LobbyScene") && (MeetingActive || scene.name != "GameScene"))
+            if ((!_meetingActive || scene.name != "LobbyScene") && (_meetingActive || scene.name != "GameScene"))
             {
                 return;
             }

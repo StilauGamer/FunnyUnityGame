@@ -10,11 +10,16 @@ namespace PlayerScripts
         public PlayerMovement playerMovement;
         public ParticleSystem deathParticles;
 
+        
         [Header("Player UI")]
         public PlayerUI playerUI;
+        
 
         [SyncVar(hook = nameof(OnDeathChanged))]
         internal bool IsDead;
+        internal string DisplayName;
+        
+        
         private NetworkIdentity _networkIdentity;
         
         public override void OnStartLocalPlayer()
