@@ -1,10 +1,15 @@
-﻿using Mirror;
+﻿using Emergency;
+using Mirror;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace PlayerScripts
 {
     public class PlayerCam : NetworkBehaviour
     {
+        [Header("Player")]
+        public Player player;
+        
         public float sensitivity = 5f;
 
         public Transform orientation;
@@ -14,6 +19,26 @@ namespace PlayerScripts
         private float _xRotation;
         private float _yRotation;
 
+        private void Start()
+        {
+            SceneManager.sceneLoaded += OnSceneLoaded;
+        }
+
+        private void OnDestroy()
+        {
+            SceneManager.sceneLoaded -= OnSceneLoaded;
+        }
+        
+        private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            if (!isLocalPlayer)
+            {
+                return;
+            }
+            
+            _camera = Camera.main;
+        }
+        
         public override void OnStartLocalPlayer()
         {
             if (!isLocalPlayer)
@@ -21,20 +46,27 @@ namespace PlayerScripts
                 return;
             }
             
-            Cursor.visible = false;
-            Cursor.lockState = CursorLockMode.Locked;
             
-            
-            _camera = Camera.main;
             foreach (Transform child in playerObject.transform)
             {
                 child.gameObject.SetActive(false);
             }
         }
+        
+        public void ToggleInput(bool active)
+        {
+            if (!isLocalPlayer)
+            {
+                return;
+            }
+            
+            Cursor.visible = active;
+            Cursor.lockState = active ? CursorLockMode.None : CursorLockMode.Locked;
+        }
 
         private void Update()
         {
-            if (!isLocalPlayer)
+            if (!isLocalPlayer || GameManager.Instance.IsMeetingActive())
             {
                 return;
             }

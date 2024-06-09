@@ -1,11 +1,15 @@
 ﻿using System;
 using System.Collections;
-using System.Linq;
+using System.Collections.Generic;
 using Emergency;
+using Game;
 using Mirror;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.Serialization;
+using UnityEngine.UI;
+using Utils;
 
 namespace PlayerScripts
 {
@@ -27,102 +31,141 @@ namespace PlayerScripts
         [SerializeField]
         private GameObject bodyReportedPrefab;
         private GameObject _bodyReportedScreen;
-        
-        private GameObject _canvas;
+
+        [SerializeField]
+        private GameObject lobbyUiPrefab;
+        private GameObject _lobbyUi;
+        private Button _lobbyStartButton;
+        private TMP_InputField _lobbyNameField;
 
         
         private Player _player;
         private NetworkIdentity _networkIdentity;
 
-        public override void OnStartLocalPlayer()
+        private void Start()
         {
-            base.OnStartLocalPlayer();
-            
-            _networkIdentity = GetComponent<NetworkIdentity>();
-            if (isServer && !connectionToClient.isAuthenticated)
+            SceneManager.sceneLoaded += OnSceneLoaded;
+        }
+
+        private void OnDestroy()
+        {
+            SceneManager.sceneLoaded -= OnSceneLoaded;
+        }
+        
+        private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            if (!isLocalPlayer)
             {
-                _networkIdentity.AssignClientAuthority(connectionToClient);
+                return;
+            }
+
+            Debug.Log("PlayerUI - OnSceneLoaded - Player: " + _player.netId + " - Scene: " + scene.name);
+            StartCoroutine(OnPlayerReady(scene.name));
+        }
+
+        private IEnumerator OnPlayerReady(string scene)
+        {
+            yield return new WaitForSeconds(0.1f);
+
+            if (scene != "LobbyScene")
+            {
+                _lobbyUi.SetActive(false);
             }
             
+            switch (scene)
+            {
+                case "GameScene":
+                    Debug.Log("PlayerUI - OnPlayerReady - GameScene");
+                    _player.playerCam.ToggleInput(false);
+                    
+                    _emergencyScreen.SetActive(false);
+                    
+                    _player.ReadyForMeeting(false);
+                    break;
+                case "EmergencyScene":
+                    Debug.Log("PlayerUI - OnPlayerReady - LobbyScene");
+                    _player.playerCam.ToggleInput(true);
+                    
+                    _deathScreen.SetActive(false);
+                    _bodyReportedScreen.SetActive(false);
+                    _emergencyScreen.SetActive(true);
+                    
+                    _player.ReadyForMeeting(true);
+                    break;
+            }
+        }
+
+        
+        
+        public override void OnStartLocalPlayer()
+        {
             if (!isLocalPlayer)
             {
                 return;
             }
             
             _player = GetComponent<Player>();
+            
+            Debug.Log("PlayerUI - OnStartLocalPlayer - Player: " + _player.netId);
             StartCoroutine(InitializeUI());
         }
 
-        public override void OnStopClient()
-        {
-            Destroy(_canvas);
-        }
-
-        [Client]
         private IEnumerator InitializeUI()
         {
-            yield return new WaitForSeconds(0.1f);
-            _canvas = GameObject.Find("Canvas"); 
+            yield return new WaitForSeconds(.1f);
 
-            var currentScene = SceneManager.GetActiveScene().name;
-            Debug.Log("Current Scene: " + currentScene);
-            switch (currentScene)
-            {
-                case "GameScene":
-                    Debug.Log("Setting up game UI");
-                    SetupGameUI();
-                    break;
-                
-                case "LobbyScene":
-                    Debug.Log("Setting up lobby UI");
-                    SetupLobbyUI();
-                    break;
-            }
-        }
-
-        [Client]
-        private void SetupGameUI()
-        {
             if (!_deathScreen)
             {
-                _deathScreen = Instantiate(deathScreenPrefab, _canvas.transform);
+                _deathScreen = Instantiate(deathScreenPrefab, GameManager.Instance.canvas.transform);
                 _deathScreen.SetActive(false);
             }
-
+            
             if (!_reportButton)
             {
-                _reportButton = Instantiate(reportButtonPrefab, _canvas.transform);
+                _reportButton = Instantiate(reportButtonPrefab, GameManager.Instance.canvas.transform);
                 _reportButton.SetActive(false);
             }
-
+            
             if (!_bodyReportedScreen)
             {
-                _bodyReportedScreen = Instantiate(bodyReportedPrefab, _canvas.transform);
+                _bodyReportedScreen = Instantiate(bodyReportedPrefab, GameManager.Instance.canvas.transform);
                 _bodyReportedScreen.SetActive(false);
             }
-        }
-
-        [Client]
-        private void SetupLobbyUI()
-        {
-            if (_emergencyScreen)
+            
+            if (!_emergencyScreen)
             {
-                return;
+                _emergencyScreen = Instantiate(emergencyScreenPrefab, GameManager.Instance.canvas.transform);
+                _emergencyScreen.SetActive(false);
             }
             
-            Debug.Log("Setting up emergency screen");
-            _emergencyScreen = Instantiate(emergencyScreenPrefab, _canvas.transform);
+            if (!_lobbyUi)
+            {
+                _lobbyUi = Instantiate(lobbyUiPrefab, GameManager.Instance.canvas.transform);
+                
+                _lobbyNameField = ModelUtils.GetModel(_lobbyUi, "LobbyName").GetComponent<TMP_InputField>();
+                _lobbyNameField.onValueChanged.AddListener(OnLobbyNameChanged);
+                
+                _lobbyStartButton = ModelUtils.GetModel(_lobbyUi, "StartButton").GetComponent<Button>();
+                _lobbyStartButton.onClick.AddListener(LobbyManager.Instance.StartGame);
+            }
+        }
+        
+        private void OnLobbyNameChanged(string displayName)
+        {
+            _player.CmdChangeDisplayName(displayName);
         }
         
         
-        
+        [TargetRpc]
         public void ToggleBodyReportedScreen(bool isReported)
         {
             if (!_bodyReportedScreen)
             {
+                Debug.LogWarning("BodyReportedScreen not found");
                 return;
             }
             
+            Debug.Log("Toggling body reported screen: " + isReported);
             _bodyReportedScreen.SetActive(isReported);
         }
 
@@ -142,7 +185,7 @@ namespace PlayerScripts
             {
                 return;
             }
-
+            
             if (!_reportButton)
             {
                 return;
@@ -157,47 +200,65 @@ namespace PlayerScripts
 
             _reportButton.SetActive(true);
         }
-
         
-        [Command(requiresAuthority = false)]
-        public void CmdUpdateUI()
-        {
-            var playerKilledConnectionId = EmergencyMeeting.instance.PlayerKilled;
-            if (!NetworkServer.connections.TryGetValue(playerKilledConnectionId, out var playerKilledConnection))
-            {
-                return;
-            }
-            
-            var playerKilled = playerKilledConnection.identity.GetComponent<Player>();
-            if (!playerKilled)
-            {
-                Debug.LogError("Player not found");
-                return;
-            }
-            
-            Debug.Log("Updating UI - Server");
-            RpcUpdateUI(playerKilled);
-        }
         
-        [ClientRpc]
-        private void RpcUpdateUI(Player playerKilled)
+        public void StartEmergencyUI(List<Player> allPlayers)
         {
-            Debug.Log("Updating UI - Client");
+            Debug.Log("Starting emergency UI for " + _player.netId);
             if (!_emergencyScreen)
             {
-                Debug.LogError("Emergency screen not found");
                 return;
             }
             
-            var textComponents = _emergencyScreen.GetComponentsInChildren<TMP_Text>();
-            foreach (var text in textComponents)
+            _emergencyScreen.SetActive(true);
+
+            var currentCount = 0;
+            
+            var playerList = ModelUtils.GetModel(_emergencyScreen, "PlayerList");
+            if (!playerList)
             {
-                if (text.name != "EmergencyTitle")
+                Debug.Log("PlayerList not found");
+                return;
+            }
+            
+            foreach (var otherPlayer in allPlayers)
+            {
+                Debug.Log("Updating UI - Client - Player: " + otherPlayer.netId);
+                var playerBox = ModelUtils.GetModel(playerList, "PlayerBox" + currentCount);
+                if (!playerBox)
                 {
+                    Debug.Log("PlayerBox not found");
                     continue;
                 }
                 
-                text.text = "Emergency Meeting - " + playerKilled.DisplayName;
+                playerBox.SetActive(true);
+                
+                
+                var playerAvatarBox = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_Avatar");
+                if (playerAvatarBox)
+                {
+                    Debug.Log("Updating UI - Client - Player Avatar: " + otherPlayer.netId);
+                    var newColor = otherPlayer.BodyColor;
+                    newColor.a = 1f;
+                    
+                    playerAvatarBox.GetComponent<RawImage>().color = newColor;
+                }
+                
+                var playerNameBox = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_Name");
+                if (playerNameBox)
+                {
+                    Debug.Log("Updating UI - Client - Player Name: " + otherPlayer.DisplayName);
+                    playerNameBox.GetComponent<TextMeshProUGUI>().text = otherPlayer.DisplayName + " - " + otherPlayer.netId;
+                }
+                
+                var playerDeadBox = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_Dead");
+                if (playerDeadBox)
+                {
+                    Debug.Log("Updating UI - Client - Player Dead: " + otherPlayer.IsDead);
+                    playerDeadBox.SetActive(otherPlayer.IsDead);
+                }
+                
+                currentCount++;
             }
         }
     }

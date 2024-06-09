@@ -1,5 +1,9 @@
-﻿using Mirror;
+﻿using System.Collections;
+using System.Collections.Generic;
+using Emergency;
+using Mirror;
 using UnityEngine;
+using Utils;
 
 namespace PlayerScripts
 {
@@ -15,13 +19,32 @@ namespace PlayerScripts
         public PlayerUI playerUI;
         
 
+        [Header("Player State")]
         [SyncVar(hook = nameof(OnDeathChanged))]
         internal bool IsDead;
+        
+        [SyncVar(hook = nameof(OnReportBodyChanged))]
+        internal bool IsReporting;
+        
         [SyncVar]
         internal string DisplayName;
         
+        [SyncVar]
+        internal bool IsReadyForMeeting;
+
+        [SyncVar]
+        internal bool IsImposter;
+        
+        [SyncVar(hook = nameof(OnBodyColorChanged))]
+        internal Color BodyColor;
+        
         
         private NetworkIdentity _networkIdentity;
+
+        private void Awake()
+        {
+            DontDestroyOnLoad(gameObject);
+        }
         
         public override void OnStartLocalPlayer()
         {
@@ -56,11 +79,88 @@ namespace PlayerScripts
             
             CmdRespawn();
         }
+        
+        private void OnBodyColorChanged(Color _, Color newColor)
+        {
+            var mogusAlive = ModelUtils.GetModel(gameObject, "mogus_alive");
+            var mogusDead = ModelUtils.GetModel(gameObject, "mogus_dead");
 
+            if (isLocalPlayer)
+            {
+                return;
+            }
+            
+            if (!mogusAlive || !mogusDead)
+            {
+                Debug.LogError("Mogus model not found");
+                return;
+            }
+            
+            var mogusAliveRenderer = mogusAlive.GetComponent<Renderer>();
+            var mogusDeadRenderer = mogusDead.GetComponent<Renderer>();
+            
+            if (!mogusAliveRenderer || !mogusDeadRenderer)
+            {
+                Debug.LogError("Mogus renderer not found");
+                return;
+            }
+            
+            if (mogusAliveRenderer.materials.Length == 0 || mogusDeadRenderer.materials.Length == 0)
+            {
+                Debug.LogError("Mogus materials not found");
+                return;
+            }
+            
+            foreach (var material in mogusAliveRenderer.materials)
+            {
+                Debug.Log("Mogus Alive Material: " + material.name);
+                if (material.name == "Body (Instance)")
+                {
+                    material.color = newColor;
+                }
+            }
+            
+            foreach (var material in mogusDeadRenderer.materials)
+            {
+                Debug.Log("Mogus Dead Material: " + material.name);
+                if (material.name == "Body (Instance)")
+                {
+                    material.color = newColor;
+                }
+            }
+        }
+        
+        private void OnReportBodyChanged(bool oldReported, bool newReported)
+        {
+            if (isLocalPlayer)
+            {
+                StartCoroutine(ReportBody());
+            }
+        }
+        
+        private IEnumerator ReportBody()
+        {
+            yield return new WaitForSeconds(2.5f);
+
+            GameManager.Instance.ToggleMeeting(true, netId);
+        }
+
+
+        [TargetRpc]
+        public void StartMeeting(List<Player> allPlayers)
+        {
+            playerUI.StartEmergencyUI(allPlayers);
+        }
+        
+        public void ReadyForMeeting(bool isReady)
+        {
+            CmdReadyForMeeting(isReady);
+        }
+        
         private void OnDeathChanged(bool oldDead, bool newDead)
         {
-            var mogusAlive = GetModel(gameObject, "mogus_alive");
-            var mogusDead = GetModel(gameObject, "mogus_dead");
+            var mogusAlive = ModelUtils.GetModel(gameObject, "mogus_alive");
+            var mogusDead = ModelUtils.GetModel(gameObject, "mogus_dead");
 
             if (isLocalPlayer)
             {
@@ -84,27 +184,6 @@ namespace PlayerScripts
                 mogusAlive.gameObject.SetActive(true);
                 mogusDead.gameObject.SetActive(false);
             }
-
-            return;
-
-            GameObject GetModel(GameObject gameObjectInternal, string nameInternal)
-            {
-                if (gameObjectInternal.name == nameInternal)
-                {
-                    return gameObjectInternal;
-                }
-                
-                foreach (Transform child in gameObjectInternal.transform)
-                {
-                    var model = GetModel(child.gameObject, nameInternal);
-                    if (model != null)
-                    {
-                        return model;
-                    }
-                }
-                
-                return null;
-            }
         }
 
         [ClientRpc]
@@ -117,7 +196,19 @@ namespace PlayerScripts
             
             playerUI.ToggleDeathScreen(isDead);
         }
-
+        
+        [Command]
+        public void CmdChangeDisplayName(string newName)
+        {
+            DisplayName = newName;
+        }
+        
+        [Command(requiresAuthority = false)]
+        private void CmdReadyForMeeting(bool isReady)
+        {
+            IsReadyForMeeting = isReady;
+        }
+        
         [Command]
         private void CmdRespawn()
         {

@@ -31,6 +31,8 @@ namespace Networking
             networkManager.networkAddress = ipAddress;
             networkManager.StartClient();
             
+            
+            
             backgroundImage.gameObject.SetActive(false);
         }
         

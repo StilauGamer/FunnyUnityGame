@@ -1,5 +1,7 @@
 ﻿using System.Collections;
+using System.Linq;
 using Emergency;
+using Game;
 using Mirror;
 using UnityEngine;
 
@@ -11,7 +13,7 @@ namespace PlayerScripts
         
         private void Update()
         {
-            if (!isLocalPlayer)
+            if (!isLocalPlayer || GameManager.Instance.IsMeetingActive())
             {
                 return;
             }
@@ -66,27 +68,12 @@ namespace PlayerScripts
             }
             #endif
 
-            RpcReportBody(closestPlayer);
-        }
-
-        [ClientRpc]
-        private void RpcReportBody(Player playerKilled)
-        {
-            StartCoroutine(StartReportedBody(playerKilled));
-        }
-
-        private IEnumerator StartReportedBody(Player playerKilled)
-        {
-            var players = FindObjectsByType<Player>(FindObjectsSortMode.None);
-            foreach (var otherClient in players)
+            player.IsReporting = true;
+            var allPlayers = LobbyManager.Instance.GetAllPlayers();
+            foreach (var otherPlayer in allPlayers)
             {
-                otherClient.playerUI.ToggleBodyReportedScreen(true);
-                yield return null;
+                otherPlayer.playerUI.ToggleBodyReportedScreen(true);
             }
-            
-            
-            yield return new WaitForSeconds(2.5f);
-            EmergencyMeeting.instance.ToggleMeeting(false, player.connectionToClient, playerKilled.connectionToClient);
         }
     }
 }

@@ -2,6 +2,7 @@ using System.Collections;
 using Mirror;
 using PlayerScripts.Enums;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace PlayerScripts
 {
@@ -28,6 +29,7 @@ namespace PlayerScripts
         [Header("Player")]
         public Player player;
         public Transform orientation;
+        public Animator animator;
         
         
         internal float CurrentSpeed;
@@ -60,10 +62,14 @@ namespace PlayerScripts
                 return;
             }
 
-            IsGrounded = Physics.Raycast(transform.position, Vector3.down, playerHeight * 0.5f + 0.2f, groundMask);
+            IsGrounded = Physics.Raycast(transform.position, Vector3.down, playerHeight * 0.5f + 0.3f, groundMask);
             
-            SpeedControl();
             StateHandler();
+            SpeedControl();
+            
+            // Debug.Log("IsGrounded: " + IsGrounded);
+            // Debug.Log("CurrentState: " + _currentState);
+            // Debug.Log("CurrentTerrainType: " + _currentTerrainType);
 
             if (IsGrounded)
             {
@@ -87,6 +93,12 @@ namespace PlayerScripts
 
         private void StateHandler()
         {
+            if (IsGrounded && _rigidbody.velocity.magnitude < 0.1f)
+            {
+                _currentState = MovementState.Idle;
+                return;
+            }
+            
             _currentTerrainType = IsOnSlope() ? PlayerTerrainType.Slope : PlayerTerrainType.Flat;
             if (!IsGrounded)
             {
@@ -113,7 +125,9 @@ namespace PlayerScripts
             {
                 return;
             }
-            
+
+            animator.SetBool("walk", _currentState != MovementState.Idle);
+
             _moveDirection = orientation.forward * Vertical + orientation.right * Horizontal;
 
             if (_currentTerrainType == PlayerTerrainType.Slope && !_exitingSlope)
@@ -158,7 +172,6 @@ namespace PlayerScripts
             else
             {
                 var flatVelocity = new Vector3(_rigidbody.velocity.x, 0, _rigidbody.velocity.z);
-
                 if (flatVelocity.magnitude <= CurrentSpeed)
                 {
                     return;
