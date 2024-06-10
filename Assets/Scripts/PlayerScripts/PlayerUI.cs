@@ -1,7 +1,9 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using Game;
 using Mirror;
+using PlayerScripts.Models;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -50,6 +52,7 @@ namespace PlayerScripts
         private bool _isReady;
 
         
+        private readonly Dictionary<uint, int> _playerMeetingLocations = new();
         private Player _player;
         private NetworkIdentity _networkIdentity;
 
@@ -132,11 +135,9 @@ namespace PlayerScripts
         {
             if (!_bodyReportedScreen)
             {
-                Debug.LogWarning("BodyReportedScreen not found");
                 return;
             }
             
-            Debug.Log("Toggling body reported screen: " + isReported);
             _bodyReportedScreen.SetActive(isReported);
         }
 
@@ -223,7 +224,7 @@ namespace PlayerScripts
                 return;
             }
             
-            if (!_reportButton)
+            if (!_reportButton || _player.IsDead || GameManager.Instance.IsMeetingActive())
             {
                 return;
             }
@@ -255,7 +256,68 @@ namespace PlayerScripts
             
             _lobbyStartButtonImage.sprite = _isReady ? unreadyButtonSprite : readyButtonSprite;
         }
-        
+
+
+
+        [TargetRpc]
+        internal void ShowVoteResults()
+        {
+            var allPlayers = LobbyManager.Instance.GetAllPlayers();
+            foreach (var otherPlayer in allPlayers)
+            {
+                var boxLocation = _playerMeetingLocations[otherPlayer.netId];
+                var playerBox = ModelUtils.GetModel(_emergencyScreen, "PlayerBox" + boxLocation);
+                
+                var playerVoteButton = ModelUtils.GetModel(playerBox, $"PlayerBox{boxLocation}_VoteButton");
+                if (playerVoteButton)
+                {
+                    playerVoteButton.SetActive(false);
+                }
+                
+                var playerReporterBox = ModelUtils.GetModel(playerBox, $"PlayerBox{boxLocation}_Reporter");
+                if (playerReporterBox)
+                {
+                    playerReporterBox.SetActive(false);
+                }
+                
+                var playerVoteCount = ModelUtils.GetModel(playerBox, $"PlayerBox{boxLocation}_VoteCount");
+                if (playerVoteCount)
+                {
+                    playerVoteCount.SetActive(true);
+                    
+                    var playerVoteCountText = playerVoteCount.GetComponent<TextMeshProUGUI>();
+                    
+                    foreach (var otherPlayerVote in allPlayers)
+                    {
+                        Debug.Log("Player: " + otherPlayerVote.netId + " has voted for: " + otherPlayerVote.PlayerVote.VotedFor);
+                    }
+                    
+                    var voteCount = allPlayers.Sum(p => p.PlayerVote.VotedFor == otherPlayer.netId ? 1 : 0);
+                    Debug.Log("Player: " + otherPlayer.netId + " has " + voteCount + " votes");
+                    
+                    playerVoteCountText.text = voteCount.ToString();
+                }
+            }
+        }
+
+        internal void HideVoteButtons()
+        {
+            var allLocations = _playerMeetingLocations.Values;
+            foreach (var location in allLocations)
+            {
+                var playerBox = ModelUtils.GetModel(_emergencyScreen, "PlayerBox" + location);
+                if (!playerBox)
+                {
+                    continue;
+                }
+                
+                var playerVoteButton = ModelUtils.GetModel(playerBox, $"PlayerBox{location}_VoteButton");
+                if (playerVoteButton)
+                {
+                    playerVoteButton.SetActive(false);
+                }
+            }
+        }
         
         internal void StartEmergencyUI(List<Player> allPlayers)
         {
@@ -278,6 +340,7 @@ namespace PlayerScripts
             
             foreach (var otherPlayer in allPlayers)
             {
+                _playerMeetingLocations[otherPlayer.netId] = currentCount;
                 Debug.Log("Updating UI - Client - Player: " + otherPlayer.netId);
                 var playerBox = ModelUtils.GetModel(playerList, "PlayerBox" + currentCount);
                 if (!playerBox)
@@ -313,8 +376,55 @@ namespace PlayerScripts
                     playerDeadBox.SetActive(otherPlayer.IsDead);
                 }
                 
+                var playerVoteButton = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_VoteButton");
+                if (playerVoteButton)
+                {
+                    Debug.Log("Updating UI - Client - Player Vote Button: " + otherPlayer.netId);
+                    var button = playerVoteButton.GetComponent<Button>();
+                    button.onClick.AddListener(() => OnVoteButtonClicked(otherPlayer.netId));
+                }
+                
+                if (otherPlayer.netId == _player.netId || otherPlayer.IsDead || _player.IsDead)
+                {
+                    playerVoteButton.SetActive(false);
+                }
+                
+                var playerReporterBox = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_Reported");
+                if (playerReporterBox)
+                {
+                    Debug.Log("Updating UI - Client - Player Reporter: " + otherPlayer.netId + " - " + otherPlayer.IsReporting);
+                    playerReporterBox.SetActive(otherPlayer.IsReporting);
+                }
+                
+                var playerVoteCount = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_VoteCount");
+                if (playerVoteCount)
+                {
+                    Debug.Log("Updating UI - Client - Player Vote Count: " + otherPlayer.netId);
+                    playerVoteCount.SetActive(false);
+                }
+                
                 currentCount++;
             }
+        }
+        
+        private void OnVoteButtonClicked(uint votedNetId)
+        {
+            SendVoteResults(votedNetId);
+        }
+        
+        [Command]
+        private void SendVoteResults(uint votedNetId)
+        {
+            var newPlayerVote = new PlayerVote
+            {
+                HasVoted = true,
+                VotedFor = votedNetId
+            };
+            
+            _player.PlayerVote = newPlayerVote;
+            Debug.Log("Player: " + _player.netId + " has now voted for: " + votedNetId);
+            
+            GameManager.Instance.UpdateVotingResults();
         }
     }
 }

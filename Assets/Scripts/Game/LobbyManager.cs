@@ -3,6 +3,7 @@ using System.Linq;
 using JetBrains.Annotations;
 using Mirror;
 using PlayerScripts;
+using PlayerScripts.Models;
 using UnityEngine;
 
 namespace Game
@@ -28,6 +29,7 @@ namespace Game
         [SyncVar]
         [CanBeNull]
         internal Player Host;
+        
         
         private bool CanLobbyStart => (float) _playersReady / playersInLobby >= .5f;
         

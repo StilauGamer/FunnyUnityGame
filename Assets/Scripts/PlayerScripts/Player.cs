@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using Game;
 using Mirror;
+using PlayerScripts.Models;
 using UnityEngine;
 using Utils;
 
@@ -34,6 +35,9 @@ namespace PlayerScripts
 
         [SyncVar]
         internal bool IsImposter;
+        
+        [SyncVar(hook = nameof(OnPlayerVoteChanged))]
+        internal PlayerVote PlayerVote;
         
         [SyncVar(hook = nameof(OnBodyColorChanged))]
         internal Color BodyColor;
@@ -169,12 +173,20 @@ namespace PlayerScripts
                 StartCoroutine(ReportBody());
             }
         }
+
+        private void OnPlayerVoteChanged(PlayerVote _, PlayerVote _2)
+        {
+            if (isLocalPlayer)
+            {
+                playerUI.HideVoteButtons();
+            }
+        }
         
         private IEnumerator ReportBody()
         {
             yield return new WaitForSeconds(2.5f);
 
-            GameManager.Instance.ToggleMeeting(true, netId);
+            GameManager.Instance.ToggleMeeting(true);
         }
 
 
@@ -218,7 +230,7 @@ namespace PlayerScripts
             }
         }
 
-        [ClientRpc]
+        [TargetRpc]
         private void RpcToggleDeathScreen(bool isDead)
         {
             if (!isLocalPlayer)
@@ -259,7 +271,7 @@ namespace PlayerScripts
         private void CmdKillClosestPlayer()
         {
             var closestPlayer = FindClosestPlayer(gameObject);
-            if (closestPlayer == null)
+            if (!closestPlayer)
             {
                 return;
             }

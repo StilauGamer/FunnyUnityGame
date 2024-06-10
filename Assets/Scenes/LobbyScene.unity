@@ -397,6 +397,7 @@ MonoBehaviour:
   syncMode: 0
   syncInterval: 0
   canvas: {fileID: 967291544}
+  eventSystem: {fileID: 57022906}
 --- !u!114 &739503751
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -1,8 +1,11 @@
 ﻿using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using Mirror;
 using PlayerScripts;
+using PlayerScripts.Models;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 
 namespace Game
@@ -11,12 +14,10 @@ namespace Game
     {
         public static GameManager Instance;
         public GameObject canvas;
+        public EventSystem eventSystem;
         
         [SyncVar]
         private bool _meetingActive;
-        
-        [SyncVar]
-        internal uint? PlayerReportingNetId;
 
         private void Awake()
         {
@@ -25,10 +26,13 @@ namespace Game
                 Instance = this;
                 DontDestroyOnLoad(gameObject);
                 DontDestroyOnLoad(canvas);
+                DontDestroyOnLoad(eventSystem);
             }
             else
             {
                 Destroy(gameObject);
+                Destroy(canvas);
+                Destroy(eventSystem);
             }
         }
 
@@ -36,23 +40,32 @@ namespace Game
         {
             return _meetingActive;
         }
+
+
+        [Server]
+        internal void UpdateVotingResults()
+        {
+            var allPlayers = LobbyManager.Instance.GetAllPlayers();
+            if (!allPlayers.All(p => p.PlayerVote.HasVoted || p.IsDead))
+            {
+                return;
+            }
+
+            allPlayers.ForEach(p => p.playerUI.ShowVoteResults());
+        }
         
         
         
         [Command(requiresAuthority = false)]
-        public void ToggleMeeting(bool startMeeting, uint? reporter)
+        public void ToggleMeeting(bool startMeeting)
         {
             if (startMeeting)
             {
                 StartMeeting();
-
-                PlayerReportingNetId = reporter;
             }
             else
             {
                 EndMeeting();
-                
-                PlayerReportingNetId = reporter;
             }
         }
 
