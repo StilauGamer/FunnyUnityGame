@@ -1,13 +1,11 @@
 ﻿using System.Collections;
 using System.Linq;
-using Game;
-using JetBrains.Annotations;
 using Mirror;
 using PlayerScripts;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-namespace Emergency
+namespace Game
 {
     public class GameManager : NetworkBehaviour
     {

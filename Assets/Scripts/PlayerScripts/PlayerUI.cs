@@ -1,7 +1,5 @@
-﻿using System;
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
-using Emergency;
 using Game;
 using Mirror;
 using TMPro;
@@ -32,11 +30,24 @@ namespace PlayerScripts
         private GameObject bodyReportedPrefab;
         private GameObject _bodyReportedScreen;
 
+        [Header("Lobby UI")]
         [SerializeField]
         private GameObject lobbyUiPrefab;
         private GameObject _lobbyUi;
-        private Button _lobbyStartButton;
-        private TMP_InputField _lobbyNameField;
+        private Image _lobbyStartButtonImage;
+
+        [SerializeField]
+        private Sprite readyButtonSprite;
+        [SerializeField]
+        private Sprite unreadyButtonSprite;
+        [SerializeField]
+        private Sprite startButtonSprite;
+        [SerializeField]
+        private Sprite waitingButtonSprite;
+        
+        
+        [SyncVar]
+        private bool _isReady;
 
         
         private Player _player;
@@ -52,6 +63,20 @@ namespace PlayerScripts
             SceneManager.sceneLoaded -= OnSceneLoaded;
         }
         
+        
+        public override void OnStartLocalPlayer()
+        {
+            if (!isLocalPlayer)
+            {
+                return;
+            }
+            
+            _player = GetComponent<Player>();
+            
+            Debug.Log("PlayerUI - OnStartLocalPlayer - Player: " + _player.netId);
+            StartCoroutine(InitializeUI());
+        }
+        
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
             if (!isLocalPlayer)
@@ -60,10 +85,10 @@ namespace PlayerScripts
             }
 
             Debug.Log("PlayerUI - OnSceneLoaded - Player: " + _player.netId + " - Scene: " + scene.name);
-            StartCoroutine(OnPlayerReady(scene.name));
+            StartCoroutine(OnPlayerSceneReady(scene.name));
         }
 
-        private IEnumerator OnPlayerReady(string scene)
+        private IEnumerator OnPlayerSceneReady(string scene)
         {
             yield return new WaitForSeconds(0.1f);
 
@@ -94,21 +119,38 @@ namespace PlayerScripts
                     break;
             }
         }
+        
+        private void OnLobbyNameChanged(string displayName)
+        {
+            _player.CmdChangeDisplayName(displayName);
+        }
 
         
         
-        public override void OnStartLocalPlayer()
+        [TargetRpc]
+        internal void ToggleBodyReportedScreen(bool isReported)
         {
-            if (!isLocalPlayer)
+            if (!_bodyReportedScreen)
+            {
+                Debug.LogWarning("BodyReportedScreen not found");
+                return;
+            }
+            
+            Debug.Log("Toggling body reported screen: " + isReported);
+            _bodyReportedScreen.SetActive(isReported);
+        }
+
+        internal void ToggleDeathScreen(bool isDead)
+        {
+            if (!_deathScreen)
             {
                 return;
             }
             
-            _player = GetComponent<Player>();
-            
-            Debug.Log("PlayerUI - OnStartLocalPlayer - Player: " + _player.netId);
-            StartCoroutine(InitializeUI());
+            _deathScreen.SetActive(isDead);
         }
+        
+        
 
         private IEnumerator InitializeUI()
         {
@@ -142,42 +184,37 @@ namespace PlayerScripts
             {
                 _lobbyUi = Instantiate(lobbyUiPrefab, GameManager.Instance.canvas.transform);
                 
-                _lobbyNameField = ModelUtils.GetModel(_lobbyUi, "LobbyName").GetComponent<TMP_InputField>();
-                _lobbyNameField.onValueChanged.AddListener(OnLobbyNameChanged);
                 
-                _lobbyStartButton = ModelUtils.GetModel(_lobbyUi, "StartButton").GetComponent<Button>();
-                _lobbyStartButton.onClick.AddListener(LobbyManager.Instance.StartGame);
+                var lobbyStartButton = ModelUtils.GetModel(_lobbyUi, "StartButton");
+                lobbyStartButton.GetComponent<Button>().onClick.AddListener(OnReadyButtonClicked);
+                _lobbyStartButtonImage = lobbyStartButton.GetComponent<Image>();
+                
+                
+                var lobbyNameField = ModelUtils.GetModel(_lobbyUi, "LobbyName").GetComponent<TMP_InputField>();
+                lobbyNameField.onValueChanged.AddListener(OnLobbyNameChanged);
             }
-        }
-        
-        private void OnLobbyNameChanged(string displayName)
-        {
-            _player.CmdChangeDisplayName(displayName);
-        }
-        
-        
-        [TargetRpc]
-        public void ToggleBodyReportedScreen(bool isReported)
-        {
-            if (!_bodyReportedScreen)
-            {
-                Debug.LogWarning("BodyReportedScreen not found");
-                return;
-            }
-            
-            Debug.Log("Toggling body reported screen: " + isReported);
-            _bodyReportedScreen.SetActive(isReported);
         }
 
-        public void ToggleDeathScreen(bool isDead)
+        private void OnReadyButtonClicked()
         {
-            if (!_deathScreen)
+            _isReady = !_isReady;
+            CmdReadyForGame(_isReady);
+        }
+        
+        [Command(requiresAuthority = false)]
+        private void CmdReadyForGame(bool isReady)
+        {
+            if (!LobbyManager.Instance.Host)
             {
+                Debug.LogWarning("Host not found");
                 return;
             }
             
-            _deathScreen.SetActive(isDead);
+            
+            var isHost = LobbyManager.Instance.Host.netId == connectionToClient.identity.netId;
+            LobbyManager.Instance.ReadyUp(isHost, isReady);
         }
+        
         
         private void Update()
         {
@@ -200,9 +237,27 @@ namespace PlayerScripts
 
             _reportButton.SetActive(true);
         }
+
+        internal void UpdateReadyButton(bool canStart)
+        {
+            if (!_lobbyStartButtonImage || !LobbyManager.Instance.Host)
+            {
+                return;
+            }
+            
+            
+            if (LobbyManager.Instance.Host.netId == _player.netId)
+            {
+                _lobbyStartButtonImage.sprite = canStart ? startButtonSprite : waitingButtonSprite;
+                return;
+            }
+            
+            
+            _lobbyStartButtonImage.sprite = _isReady ? unreadyButtonSprite : readyButtonSprite;
+        }
         
         
-        public void StartEmergencyUI(List<Player> allPlayers)
+        internal void StartEmergencyUI(List<Player> allPlayers)
         {
             Debug.Log("Starting emergency UI for " + _player.netId);
             if (!_emergencyScreen)

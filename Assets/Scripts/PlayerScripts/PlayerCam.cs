@@ -1,4 +1,4 @@
-﻿using Emergency;
+﻿using Game;
 using Mirror;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -14,6 +14,7 @@ namespace PlayerScripts
 
         public Transform orientation;
         public Transform playerObject;
+        public Transform playerHeadBone;
         
         private Camera _camera;
         private float _xRotation;
@@ -21,6 +22,7 @@ namespace PlayerScripts
 
         private void Start()
         {
+            _camera = Camera.main;
             SceneManager.sceneLoaded += OnSceneLoaded;
         }
 
@@ -47,10 +49,10 @@ namespace PlayerScripts
             }
             
             
-            foreach (Transform child in playerObject.transform)
-            {
-                child.gameObject.SetActive(false);
-            }
+            // foreach (Transform child in playerObject.transform)
+            // {
+            //     child.gameObject.SetActive(false);
+            // }
         }
         
         public void ToggleInput(bool active)
@@ -84,7 +86,8 @@ namespace PlayerScripts
             
             _camera.transform.rotation = Quaternion.Euler(_xRotation, _yRotation, 0);
             orientation.rotation = Quaternion.Euler(0, _yRotation, 0);
-            playerObject.rotation = Quaternion.Euler(_xRotation, _yRotation, 0);
+            playerObject.rotation = Quaternion.Euler(0, _yRotation, 0);
+            playerHeadBone.rotation = Quaternion.Euler(_xRotation, _yRotation, 0);
         }
     }
 }

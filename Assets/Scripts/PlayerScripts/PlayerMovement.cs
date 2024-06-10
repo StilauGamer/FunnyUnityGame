@@ -2,7 +2,6 @@ using System.Collections;
 using Mirror;
 using PlayerScripts.Enums;
 using UnityEngine;
-using UnityEngine.Serialization;
 
 namespace PlayerScripts
 {
@@ -29,7 +28,12 @@ namespace PlayerScripts
         [Header("Player")]
         public Player player;
         public Transform orientation;
-        public Animator animator;
+        public NetworkAnimator animator;
+        
+        [Header("Toggles")]
+        public bool canMove = true;
+        public bool canJump = true;
+        public bool canSprint = true;
         
         
         internal float CurrentSpeed;
@@ -66,10 +70,6 @@ namespace PlayerScripts
             
             StateHandler();
             SpeedControl();
-            
-            // Debug.Log("IsGrounded: " + IsGrounded);
-            // Debug.Log("CurrentState: " + _currentState);
-            // Debug.Log("CurrentTerrainType: " + _currentTerrainType);
 
             if (IsGrounded)
             {
@@ -93,12 +93,6 @@ namespace PlayerScripts
 
         private void StateHandler()
         {
-            if (IsGrounded && _rigidbody.velocity.magnitude < 0.1f)
-            {
-                _currentState = MovementState.Idle;
-                return;
-            }
-            
             _currentTerrainType = IsOnSlope() ? PlayerTerrainType.Slope : PlayerTerrainType.Flat;
             if (!IsGrounded)
             {
@@ -106,8 +100,14 @@ namespace PlayerScripts
                 return;
             }
             
+            if (IsGrounded && Horizontal == 0 && Vertical == 0)
+            {
+                _currentState = MovementState.Idle;
+                return;
+            }
             
-            if (Input.GetKey(KeyCode.LeftShift))
+            
+            if (Input.GetKey(KeyCode.LeftShift) && canSprint)
             {
                 _currentState = MovementState.Sprinting;
                 CurrentSpeed = sprintSpeed;
@@ -126,9 +126,10 @@ namespace PlayerScripts
                 return;
             }
 
-            animator.SetBool("walk", _currentState != MovementState.Idle);
-
+            
+            animator.animator.SetBool("walk", _currentState != MovementState.Idle && _currentState != MovementState.InAir);
             _moveDirection = orientation.forward * Vertical + orientation.right * Horizontal;
+            
 
             if (_currentTerrainType == PlayerTerrainType.Slope && !_exitingSlope)
             {
@@ -149,13 +150,6 @@ namespace PlayerScripts
             }
 
             _rigidbody.useGravity = _currentTerrainType != PlayerTerrainType.Slope;
-
-
-            // Uncomment this to force stop the player when no input is given
-            // if (_horizontal == 0 && _vertical == 0)
-            // {
-            //     _rigidbody.velocity = new Vector3(0, _rigidbody.velocity.y, 0);
-            // }
         }
 
         private void SpeedControl()

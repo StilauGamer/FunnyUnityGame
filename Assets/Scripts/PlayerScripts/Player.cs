@@ -1,6 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
-using Emergency;
+using Game;
 using Mirror;
 using UnityEngine;
 using Utils;
@@ -46,13 +46,50 @@ namespace PlayerScripts
             DontDestroyOnLoad(gameObject);
         }
         
-        public override void OnStartLocalPlayer()
+        public override void OnStartClient()
         {
             _networkIdentity = GetComponent<NetworkIdentity>();
+            if (!isServer)
+            {
+                return;
+            }
+
+            _networkIdentity.AssignClientAuthority(connectionToClient);
+            
+            if (!LobbyManager.Instance.Host)
+            {
+                Debug.Log("Setting host to: " + netId);
+                LobbyManager.Instance.Host = this;
+            }
+            
+            Debug.Log("Adding player to lobby");
+            LobbyManager.Instance.playersInLobby++;
+        }
+
+        public override void OnStopClient()
+        {
             if (isServer)
             {
-                _networkIdentity.AssignClientAuthority(connectionToClient);
+                LobbyManager.Instance.playersInLobby--;
             }
+        }
+
+        public override void OnStartLocalPlayer()
+        {
+            var mogusAlive = ModelUtils.GetModel(gameObject, "mogus_alive");
+            var mogusDead = ModelUtils.GetModel(gameObject, "mogus_dead");
+            
+            if (!mogusAlive || !mogusDead)
+            {
+                Debug.LogError("Mogus model not found");
+                return;
+            }
+            
+            mogusAlive = mogusAlive.transform.Find("Cube.001").gameObject;
+            var mogusAliveRenderer = mogusAlive.GetComponent<Renderer>();
+            var mogusDeadRenderer = mogusDead.GetComponent<Renderer>();
+            mogusAliveRenderer.gameObject.SetActive(false);
+            mogusDeadRenderer.gameObject.SetActive(false);
         }
 
         public void KillNearestPlayer()
@@ -95,7 +132,8 @@ namespace PlayerScripts
                 Debug.LogError("Mogus model not found");
                 return;
             }
-            
+
+            mogusAlive = mogusAlive.transform.Find("Cube.001").gameObject;
             var mogusAliveRenderer = mogusAlive.GetComponent<Renderer>();
             var mogusDeadRenderer = mogusDead.GetComponent<Renderer>();
             
@@ -105,16 +143,10 @@ namespace PlayerScripts
                 return;
             }
             
-            if (mogusAliveRenderer.materials.Length == 0 || mogusDeadRenderer.materials.Length == 0)
-            {
-                Debug.LogError("Mogus materials not found");
-                return;
-            }
-            
             foreach (var material in mogusAliveRenderer.materials)
             {
                 Debug.Log("Mogus Alive Material: " + material.name);
-                if (material.name == "Body (Instance)")
+                if (material.name == "Body.001 (Instance)")
                 {
                     material.color = newColor;
                 }
@@ -130,7 +162,7 @@ namespace PlayerScripts
             }
         }
         
-        private void OnReportBodyChanged(bool oldReported, bool newReported)
+        private void OnReportBodyChanged(bool _, bool _2)
         {
             if (isLocalPlayer)
             {
@@ -157,7 +189,7 @@ namespace PlayerScripts
             CmdReadyForMeeting(isReady);
         }
         
-        private void OnDeathChanged(bool oldDead, bool newDead)
+        private void OnDeathChanged(bool _, bool newDead)
         {
             var mogusAlive = ModelUtils.GetModel(gameObject, "mogus_alive");
             var mogusDead = ModelUtils.GetModel(gameObject, "mogus_dead");

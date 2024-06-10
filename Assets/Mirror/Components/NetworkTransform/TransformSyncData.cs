@@ -1,6 +1,5 @@
 using UnityEngine;
 using System;
-using Mirror;
 
 namespace Mirror
 {

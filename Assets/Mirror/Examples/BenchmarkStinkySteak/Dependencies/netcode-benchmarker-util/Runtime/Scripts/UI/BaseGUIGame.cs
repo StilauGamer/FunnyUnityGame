@@ -1,6 +1,5 @@
 // using TMPro; // MIRROR CHANGE
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace StinkySteak.NetcodeBenchmark
 {

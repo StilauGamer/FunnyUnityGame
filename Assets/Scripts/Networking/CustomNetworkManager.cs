@@ -13,8 +13,6 @@ namespace Networking
             var player = Instantiate(playerPrefab);
             NetworkServer.AddPlayerForConnection(conn, player);
             
-            Debug.Log("Player added to server: " + playerUsername);
-            
             var playerScript = player.GetComponent<Player>();
             playerScript.DisplayName = playerUsername;
         }

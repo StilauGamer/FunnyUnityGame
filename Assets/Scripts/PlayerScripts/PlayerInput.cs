@@ -1,7 +1,4 @@
-﻿using System.Collections;
-using System.Linq;
-using Emergency;
-using Game;
+﻿using Game;
 using Mirror;
 using UnityEngine;
 
@@ -46,7 +43,7 @@ namespace PlayerScripts
         
         private void TryJump()
         {
-            if (!Input.GetKey(KeyCode.Space) || !player.playerMovement.ReadyToJump || !player.playerMovement.IsGrounded)
+            if (!Input.GetKey(KeyCode.Space) || !player.playerMovement.ReadyToJump || !player.playerMovement.IsGrounded || !player.playerMovement.canJump)
             {
                 return;
             }

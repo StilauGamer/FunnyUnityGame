@@ -1,7 +1,6 @@
 // host mode related helper functions.
 // usually they set up both server & client.
 // it's cleaner to keep them in one place, instead of only in server / client.
-using System;
 
 namespace Mirror
 {
