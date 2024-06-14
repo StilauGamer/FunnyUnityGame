@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game;
+using Game.Models;
 using Mirror;
 using PlayerScripts.Models;
 using TMPro;
@@ -19,11 +20,11 @@ namespace PlayerScripts
         [SerializeField]
         private GameObject deathScreenPrefab;
         private GameObject _deathScreen;
-        
+
         [SerializeField]
         private GameObject emergencyScreenPrefab;
         private GameObject _emergencyScreen;
-        
+
         [SerializeField]
         private GameObject reportButtonPrefab;
         private GameObject _reportButton;
@@ -31,27 +32,35 @@ namespace PlayerScripts
         [SerializeField]
         private GameObject bodyReportedPrefab;
         private GameObject _bodyReportedScreen;
+        
+        [SerializeField]
+        private GameObject imposterScreenPrefab;
+        private GameObject _imposterScreen;
 
         [Header("Lobby UI")]
         [SerializeField]
         private GameObject lobbyUiPrefab;
+
         private GameObject _lobbyUi;
         private Image _lobbyStartButtonImage;
 
         [SerializeField]
         private Sprite readyButtonSprite;
+
         [SerializeField]
         private Sprite unreadyButtonSprite;
+
         [SerializeField]
         private Sprite startButtonSprite;
+
         [SerializeField]
         private Sprite waitingButtonSprite;
-        
-        
+
+
         [SyncVar]
         private bool _isReady;
 
-        
+
         private readonly Dictionary<uint, int> _playerMeetingLocations = new();
         private Player _player;
         private NetworkIdentity _networkIdentity;
@@ -65,7 +74,33 @@ namespace PlayerScripts
         {
             SceneManager.sceneLoaded -= OnSceneLoaded;
         }
-        
+
+        private void Update()
+        {
+            if (!isLocalPlayer)
+            {
+                return;
+            }
+
+            if (!_player || _player.IsDead || GameManager.Instance.IsMeetingActive())
+            {
+                return;
+            }
+
+            if (_reportButton)
+            {
+                var closestPlayer = _player.FindClosestPlayer(_player.gameObject, true);
+                if (!closestPlayer)
+                {
+                    _reportButton.SetActive(false);
+                    return;
+                }
+
+                _reportButton.SetActive(true);
+            }
+        }
+
+
         
         public override void OnStartLocalPlayer()
         {
@@ -73,13 +108,13 @@ namespace PlayerScripts
             {
                 return;
             }
-            
+
             _player = GetComponent<Player>();
-            
+
             Debug.Log("PlayerUI - OnStartLocalPlayer - Player: " + _player.netId);
             StartCoroutine(InitializeUI());
         }
-        
+
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
             if (!isLocalPlayer)
@@ -99,59 +134,84 @@ namespace PlayerScripts
             {
                 _lobbyUi.SetActive(false);
             }
-            
+
             switch (scene)
             {
+                case "LobbyScene":
+                    Debug.Log("PlayerUI - OnPlayerReady - LobbyScene");
+                    _player.playerCam.ToggleInput(true);
+                    _player.playerCam.CmdSetCanTurn(false);
+                    
+                    _lobbyUi.SetActive(true);
+                    _deathScreen.SetActive(false);
+                    _bodyReportedScreen.SetActive(false);
+                    _emergencyScreen.SetActive(false);
+                    _imposterScreen.SetActive(false);
+
+                    _player.playerGame.CmdReadyForMeeting(false);
+                    break;
+                
                 case "GameScene":
                     Debug.Log("PlayerUI - OnPlayerReady - GameScene");
+                    if (_player.IsImposter)
+                    {
+                        _imposterScreen.SetActive(true);
+                    }
+                    
                     _player.playerCam.ToggleInput(false);
-                    
+                    _player.playerCam.CmdSetCanTurn(true);
+
                     _emergencyScreen.SetActive(false);
-                    
-                    _player.ReadyForMeeting(false);
+
+                    _player.playerGame.CmdReadyForMeeting(false);
                     break;
                 case "EmergencyScene":
                     Debug.Log("PlayerUI - OnPlayerReady - LobbyScene");
                     _player.playerCam.ToggleInput(true);
-                    
+                    _player.playerCam.CmdSetCanTurn(false);
+
                     _deathScreen.SetActive(false);
                     _bodyReportedScreen.SetActive(false);
+                    _imposterScreen.SetActive(false);
                     _emergencyScreen.SetActive(true);
-                    
-                    _player.ReadyForMeeting(true);
+
+                    _player.playerGame.CmdReadyForMeeting(true);
                     break;
             }
         }
-        
-        private void OnLobbyNameChanged(string displayName)
-        {
-            _player.CmdChangeDisplayName(displayName);
-        }
 
-        
-        
+
+
         [TargetRpc]
-        internal void ToggleBodyReportedScreen(bool isReported)
+        internal void RpcToggleBodyReportedScreen(bool isReported)
         {
             if (!_bodyReportedScreen)
             {
                 return;
             }
-            
+
             _bodyReportedScreen.SetActive(isReported);
         }
 
-        internal void ToggleDeathScreen(bool isDead)
+        internal IEnumerator ToggleDeathScreen(bool isDead)
         {
             if (!_deathScreen)
             {
-                return;
+                yield break;
             }
             
+
             _deathScreen.SetActive(isDead);
+            if (!isDead)
+            {
+                yield break;
+            }
+
+            yield return new WaitForSeconds(2);
+            _deathScreen.SetActive(false);
         }
-        
-        
+
+
 
         private IEnumerator InitializeUI()
         {
@@ -162,35 +222,41 @@ namespace PlayerScripts
                 _deathScreen = Instantiate(deathScreenPrefab, GameManager.Instance.canvas.transform);
                 _deathScreen.SetActive(false);
             }
-            
+
             if (!_reportButton)
             {
                 _reportButton = Instantiate(reportButtonPrefab, GameManager.Instance.canvas.transform);
                 _reportButton.SetActive(false);
             }
-            
+
             if (!_bodyReportedScreen)
             {
                 _bodyReportedScreen = Instantiate(bodyReportedPrefab, GameManager.Instance.canvas.transform);
                 _bodyReportedScreen.SetActive(false);
             }
-            
+
             if (!_emergencyScreen)
             {
                 _emergencyScreen = Instantiate(emergencyScreenPrefab, GameManager.Instance.canvas.transform);
                 _emergencyScreen.SetActive(false);
             }
             
+            if (!_imposterScreen)
+            {
+                _imposterScreen = Instantiate(imposterScreenPrefab, GameManager.Instance.canvas.transform);
+                _imposterScreen.SetActive(_player.IsImposter);
+            }
+
             if (!_lobbyUi)
             {
                 _lobbyUi = Instantiate(lobbyUiPrefab, GameManager.Instance.canvas.transform);
-                
-                
+
+
                 var lobbyStartButton = ModelUtils.GetModel(_lobbyUi, "StartButton");
                 lobbyStartButton.GetComponent<Button>().onClick.AddListener(OnReadyButtonClicked);
                 _lobbyStartButtonImage = lobbyStartButton.GetComponent<Image>();
-                
-                
+
+
                 var lobbyNameField = ModelUtils.GetModel(_lobbyUi, "LobbyName").GetComponent<TMP_InputField>();
                 lobbyNameField.onValueChanged.AddListener(OnLobbyNameChanged);
             }
@@ -199,44 +265,7 @@ namespace PlayerScripts
         private void OnReadyButtonClicked()
         {
             _isReady = !_isReady;
-            CmdReadyForGame(_isReady);
-        }
-        
-        [Command(requiresAuthority = false)]
-        private void CmdReadyForGame(bool isReady)
-        {
-            if (!LobbyManager.Instance.Host)
-            {
-                Debug.LogWarning("Host not found");
-                return;
-            }
-            
-            
-            var isHost = LobbyManager.Instance.Host.netId == connectionToClient.identity.netId;
-            LobbyManager.Instance.ReadyUp(isHost, isReady);
-        }
-        
-        
-        private void Update()
-        {
-            if (!isLocalPlayer)
-            {
-                return;
-            }
-            
-            if (!_reportButton || _player.IsDead || GameManager.Instance.IsMeetingActive())
-            {
-                return;
-            }
-            
-            var closestPlayer = _player.FindClosestPlayer(_player.gameObject, true);
-            if (!closestPlayer)
-            {
-                _reportButton.SetActive(false);
-                return;
-            }
-
-            _reportButton.SetActive(true);
+            _player.playerGame.CmdReadyForGame(_isReady);
         }
 
         internal void UpdateReadyButton(bool canStart)
@@ -245,64 +274,89 @@ namespace PlayerScripts
             {
                 return;
             }
-            
-            
+
+
             if (LobbyManager.Instance.Host.netId == _player.netId)
             {
                 _lobbyStartButtonImage.sprite = canStart ? startButtonSprite : waitingButtonSprite;
                 return;
             }
-            
-            
+
+
             _lobbyStartButtonImage.sprite = _isReady ? unreadyButtonSprite : readyButtonSprite;
         }
 
 
 
         [TargetRpc]
-        internal void ShowVoteResults()
+        internal void RpcShowVoteResults(List<VotePlayer> allPlayers)
         {
-            var allPlayers = LobbyManager.Instance.GetAllPlayers();
             foreach (var otherPlayer in allPlayers)
             {
-                var boxLocation = _playerMeetingLocations[otherPlayer.netId];
+                var boxLocation = _playerMeetingLocations[otherPlayer.NetId];
                 var playerBox = ModelUtils.GetModel(_emergencyScreen, "PlayerBox" + boxLocation);
-                
+
                 var playerVoteButton = ModelUtils.GetModel(playerBox, $"PlayerBox{boxLocation}_VoteButton");
                 if (playerVoteButton)
                 {
                     playerVoteButton.SetActive(false);
                 }
-                
+
                 var playerReporterBox = ModelUtils.GetModel(playerBox, $"PlayerBox{boxLocation}_Reporter");
                 if (playerReporterBox)
                 {
                     playerReporterBox.SetActive(false);
                 }
-                
+
                 var playerVoteCount = ModelUtils.GetModel(playerBox, $"PlayerBox{boxLocation}_VoteCount");
-                if (playerVoteCount)
+                if (!playerVoteCount)
                 {
-                    playerVoteCount.SetActive(true);
-                    
-                    var playerVoteCountText = playerVoteCount.GetComponent<TextMeshProUGUI>();
-                    
-                    foreach (var otherPlayerVote in allPlayers)
-                    {
-                        Debug.Log("Player: " + otherPlayerVote.netId + " has voted for: " + otherPlayerVote.PlayerVote.VotedFor);
-                    }
-                    
-                    var voteCount = allPlayers.Sum(p => p.PlayerVote.VotedFor == otherPlayer.netId ? 1 : 0);
-                    Debug.Log("Player: " + otherPlayer.netId + " has " + voteCount + " votes");
-                    
-                    playerVoteCountText.text = voteCount.ToString();
+                    continue;
                 }
+                
+
+
+                var playerVoteCountText = playerVoteCount.GetComponent<TextMeshProUGUI>();
+                var voteCount = allPlayers.Sum(p => p.TargetNetId == otherPlayer.NetId ? 1 : 0);
+
+                
+                playerVoteCount.SetActive(true);
+                playerVoteCountText.text = voteCount.ToString();
+            }
+        }
+
+        [TargetRpc]
+        internal void RpcSetPlayerVoted(uint playerVoted)
+        {
+            Debug.Log("Player just voted: " + playerVoted);
+            if (!_playerMeetingLocations.TryGetValue(playerVoted, out var location))
+            {
+                Debug.LogWarning("Player not found with netId: " + playerVoted + " - Location: " + location);
+                return;
+            }
+
+            var playerBox = ModelUtils.GetModel(_emergencyScreen, "PlayerBox" + location);
+            if (!playerBox)
+            {
+                return;
+            }
+
+            var playerVotedBox = ModelUtils.GetModel(playerBox, $"PlayerBox{location}_Voted");
+            if (playerVotedBox)
+            {
+                playerVotedBox.SetActive(true);
             }
         }
 
         internal void HideVoteButtons()
         {
             var allLocations = _playerMeetingLocations.Values;
+            var skipButton = ModelUtils.GetModel(_emergencyScreen, "SkipVoteButton");
+            if (skipButton)
+            {
+                skipButton.SetActive(false);
+            }
+            
             foreach (var location in allLocations)
             {
                 var playerBox = ModelUtils.GetModel(_emergencyScreen, "PlayerBox" + location);
@@ -310,7 +364,7 @@ namespace PlayerScripts
                 {
                     continue;
                 }
-                
+
                 var playerVoteButton = ModelUtils.GetModel(playerBox, $"PlayerBox{location}_VoteButton");
                 if (playerVoteButton)
                 {
@@ -318,113 +372,107 @@ namespace PlayerScripts
                 }
             }
         }
-        
-        internal void StartEmergencyUI(List<Player> allPlayers)
+
+        internal void StartEmergencyUI(List<VotePlayer> allPlayers)
         {
             Debug.Log("Starting emergency UI for " + _player.netId);
             if (!_emergencyScreen)
             {
                 return;
             }
-            
+
             _emergencyScreen.SetActive(true);
 
-            var currentCount = 0;
             
+            var currentCount = 0;
             var playerList = ModelUtils.GetModel(_emergencyScreen, "PlayerList");
             if (!playerList)
             {
-                Debug.Log("PlayerList not found");
+                Debug.LogError("PlayerList not found");
                 return;
             }
-            
+
+            var skipVoteButton = ModelUtils.GetModel(_emergencyScreen, "SkipVoteButton");
+            skipVoteButton.SetActive(!_player.IsDead);
+            skipVoteButton.GetComponent<Button>().onClick.AddListener(() => OnVoteButtonClicked(0, true));
+
+
             foreach (var otherPlayer in allPlayers)
             {
-                _playerMeetingLocations[otherPlayer.netId] = currentCount;
-                Debug.Log("Updating UI - Client - Player: " + otherPlayer.netId);
+                _playerMeetingLocations[otherPlayer.NetId] = currentCount;
                 var playerBox = ModelUtils.GetModel(playerList, "PlayerBox" + currentCount);
                 if (!playerBox)
                 {
-                    Debug.Log("PlayerBox not found");
                     continue;
                 }
-                
+
                 playerBox.SetActive(true);
-                
-                
+
+
                 var playerAvatarBox = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_Avatar");
                 if (playerAvatarBox)
                 {
-                    Debug.Log("Updating UI - Client - Player Avatar: " + otherPlayer.netId);
-                    var newColor = otherPlayer.BodyColor;
+                    var newColor = otherPlayer.Color;
                     newColor.a = 1f;
-                    
+
                     playerAvatarBox.GetComponent<RawImage>().color = newColor;
                 }
-                
+
                 var playerNameBox = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_Name");
                 if (playerNameBox)
                 {
-                    Debug.Log("Updating UI - Client - Player Name: " + otherPlayer.DisplayName);
-                    playerNameBox.GetComponent<TextMeshProUGUI>().text = otherPlayer.DisplayName + " - " + otherPlayer.netId;
+                    playerNameBox.GetComponent<TextMeshProUGUI>().text = otherPlayer.Name + " - " + otherPlayer.NetId;
                 }
-                
+
                 var playerDeadBox = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_Dead");
                 if (playerDeadBox)
                 {
-                    Debug.Log("Updating UI - Client - Player Dead: " + otherPlayer.IsDead);
                     playerDeadBox.SetActive(otherPlayer.IsDead);
                 }
-                
+
                 var playerVoteButton = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_VoteButton");
                 if (playerVoteButton)
                 {
-                    Debug.Log("Updating UI - Client - Player Vote Button: " + otherPlayer.netId);
+                    var isButtonActive = otherPlayer.NetId != _player.netId && !otherPlayer.IsDead && !_player.IsDead;
+                    playerVoteButton.SetActive(isButtonActive);
+                    
                     var button = playerVoteButton.GetComponent<Button>();
-                    button.onClick.AddListener(() => OnVoteButtonClicked(otherPlayer.netId));
+                    button.onClick.AddListener(() => OnVoteButtonClicked(otherPlayer.NetId, false));
                 }
-                
-                if (otherPlayer.netId == _player.netId || otherPlayer.IsDead || _player.IsDead)
-                {
-                    playerVoteButton.SetActive(false);
-                }
-                
+
                 var playerReporterBox = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_Reported");
                 if (playerReporterBox)
                 {
-                    Debug.Log("Updating UI - Client - Player Reporter: " + otherPlayer.netId + " - " + otherPlayer.IsReporting);
                     playerReporterBox.SetActive(otherPlayer.IsReporting);
                 }
-                
+
                 var playerVoteCount = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_VoteCount");
                 if (playerVoteCount)
                 {
-                    Debug.Log("Updating UI - Client - Player Vote Count: " + otherPlayer.netId);
                     playerVoteCount.SetActive(false);
                 }
                 
+                var playerVotedBox = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_Voted");
+                if (playerVotedBox)
+                {
+                    playerVotedBox.SetActive(false);
+                }
+
                 currentCount++;
             }
         }
-        
-        private void OnVoteButtonClicked(uint votedNetId)
+
+
+
+        private void OnVoteButtonClicked(uint votedNetId, bool isSkipping)
         {
-            SendVoteResults(votedNetId);
+            var playerVote = new PlayerVote(true, isSkipping, votedNetId);
+            _player.CmdSetPlayerVote(playerVote);
         }
-        
-        [Command]
-        private void SendVoteResults(uint votedNetId)
+
+        private void OnLobbyNameChanged(string displayName)
         {
-            var newPlayerVote = new PlayerVote
-            {
-                HasVoted = true,
-                VotedFor = votedNetId
-            };
-            
-            _player.PlayerVote = newPlayerVote;
-            Debug.Log("Player: " + _player.netId + " has now voted for: " + votedNetId);
-            
-            GameManager.Instance.UpdateVotingResults();
+            _player.CmdChangeDisplayName(displayName);
         }
     }
 }

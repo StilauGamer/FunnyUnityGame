@@ -6,7 +6,13 @@ namespace PlayerScripts
 {
     public class PlayerInput : NetworkBehaviour
     {
-        public Player player;
+        private Player _player;
+        
+        private void Awake()
+        {
+            _player = GetComponent<Player>();
+        }
+        
         
         private void Update()
         {
@@ -20,56 +26,62 @@ namespace PlayerScripts
         
         private void UpdateInputs()
         {
-            player.playerMovement.Horizontal = Input.GetAxisRaw("Horizontal");
-            player.playerMovement.Vertical = Input.GetAxisRaw("Vertical");
+            _player.playerMovement.Horizontal = Input.GetAxisRaw("Horizontal");
+            _player.playerMovement.Vertical = Input.GetAxisRaw("Vertical");
+            
+            if (_player.IsDead)
+            {
+                return;
+            }
+            
 
             if (Input.GetKeyDown(KeyCode.Q))
             {
                 ReportBody();
             }
             
-            if (Input.GetKeyDown(KeyCode.R))
+            if (Input.GetKeyDown(KeyCode.R) && _player.IsImposter)
             {
-                player.KillNearestPlayer();
+                _player.KillNearestPlayer();
             }
 
             if (Input.GetKeyDown(KeyCode.T))
             {
-                player.Respawn();
+                _player.Respawn();
             }
             
             TryJump();
         }
+
+        private bool _isHidden;
+        
+        
         
         private void TryJump()
         {
-            if (!Input.GetKey(KeyCode.Space) || !player.playerMovement.ReadyToJump || !player.playerMovement.IsGrounded || !player.playerMovement.canJump)
+            if (!Input.GetKey(KeyCode.Space) || !_player.playerMovement.ReadyToJump || !_player.playerMovement.IsGrounded || !_player.playerMovement.canJump)
             {
                 return;
             }
 
-            player.playerMovement.ReadyToJump = false;
-            player.playerMovement.Jump();
+            _player.playerMovement.ReadyToJump = false;
+            _player.playerMovement.Jump();
         }
 
         [Command]
         private void ReportBody()
         {
-            #if UNITY_EDITOR
-            var closestPlayer = player;
-            #else
-            var closestPlayer = player.FindClosestPlayer(player.gameObject, true);
+            var closestPlayer = _player.FindClosestPlayer(_player.gameObject, true);
             if (!closestPlayer)
             {
                 return;
             }
-            #endif
 
-            player.IsReporting = true;
+            _player.IsReporting = true;
             var allPlayers = LobbyManager.Instance.GetAllPlayers();
             foreach (var otherPlayer in allPlayers)
             {
-                otherPlayer.playerUI.ToggleBodyReportedScreen(true);
+                otherPlayer.playerUI.RpcToggleBodyReportedScreen(true);
             }
         }
     }

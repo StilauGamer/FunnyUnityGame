@@ -1,4 +1,5 @@
 using System.Collections;
+using Game;
 using Mirror;
 using PlayerScripts.Enums;
 using UnityEngine;
@@ -9,54 +10,73 @@ namespace PlayerScripts
     {
         [Header("Movement")]
         public float walkSpeed = 6f;
+
         public float sprintSpeed = 8f;
 
-        public float groundDrag;
+        public float groundDrag = 6f;
 
-        public float jumpForce;
-        public float jumpCooldown;
-        public float airMultiplier;
-        
+        public float jumpForce = 6f;
+        public float jumpCooldown = 0.25f;
+        public float airMultiplier = 0.4f;
+
 
         [Header("Ground Check")]
         public float playerHeight;
+
         public LayerMask groundMask;
 
         [Header("Slope Handling")]
         public float maxSlopeAngle;
-        
+
         [Header("Player")]
         public Player player;
+
         public Transform orientation;
         public NetworkAnimator animator;
-        
+
         [Header("Toggles")]
         public bool canMove = true;
+
         public bool canJump = true;
         public bool canSprint = true;
-        
-        
-        internal float CurrentSpeed;
+
+
         internal float Horizontal;
         internal float Vertical;
         
+        [SyncVar]
+        internal Quaternion Orientation;
+
         internal bool ReadyToJump = true;
         internal bool IsGrounded;
 
 
+        private bool _exitingSlope;
+        private float _currentSpeed;
+        private RaycastHit _slopeHit;
         private MovementState _currentState;
         private PlayerTerrainType _currentTerrainType;
-        private RaycastHit _slopeHit;
-        private bool _exitingSlope;
-        
+
         private Vector3 _moveDirection;
         private Rigidbody _rigidbody;
-        
-        
+        private readonly int _walk;
+
+
+        private PlayerMovement()
+        {
+            _walk = Animator.StringToHash("walk");
+        }
+
         public override void OnStartLocalPlayer()
         {
             _rigidbody = GetComponent<Rigidbody>();
             _rigidbody.freezeRotation = true;
+        }
+        
+        [TargetRpc]
+        internal void RpcSetConstraints(RigidbodyConstraints constraints)
+        {
+            _rigidbody.constraints = constraints;
         }
 
         private void Update()
@@ -67,7 +87,8 @@ namespace PlayerScripts
             }
 
             IsGrounded = Physics.Raycast(transform.position, Vector3.down, playerHeight * 0.5f + 0.3f, groundMask);
-            
+            Orientation = orientation.rotation;
+
             StateHandler();
             SpeedControl();
 
@@ -87,7 +108,7 @@ namespace PlayerScripts
             {
                 return;
             }
-            
+
             MovePlayer();
         }
 
@@ -99,41 +120,44 @@ namespace PlayerScripts
                 _currentState = MovementState.InAir;
                 return;
             }
-            
+
             if (IsGrounded && Horizontal == 0 && Vertical == 0)
             {
                 _currentState = MovementState.Idle;
                 return;
             }
-            
-            
+
+
             if (Input.GetKey(KeyCode.LeftShift) && canSprint)
             {
                 _currentState = MovementState.Sprinting;
-                CurrentSpeed = sprintSpeed;
+                _currentSpeed = sprintSpeed;
             }
             else
             {
                 _currentState = MovementState.Walking;
-                CurrentSpeed = walkSpeed;
+                _currentSpeed = walkSpeed;
             }
         }
-        
+
         private void MovePlayer()
         {
-            if (player.IsDead)
+            if (!canMove || !LobbyManager.Instance.HasGameStarted())
             {
                 return;
             }
+            
 
-            
-            animator.animator.SetBool("walk", _currentState != MovementState.Idle && _currentState != MovementState.InAir);
             _moveDirection = orientation.forward * Vertical + orientation.right * Horizontal;
-            
+            if (animator)
+            {
+                animator.animator.SetBool(_walk, _currentState != MovementState.Idle && _currentState != MovementState.InAir);
+            }
+
 
             if (_currentTerrainType == PlayerTerrainType.Slope && !_exitingSlope)
             {
-                _rigidbody.AddForce(GetSlopeMoveDirection() * (CurrentSpeed * 20f), ForceMode.Force);
+                _rigidbody.AddForce(GetSlopeMoveDirection() * (_currentSpeed * 20f), ForceMode.Force);
 
                 if (_rigidbody.velocity.y > 0)
                 {
@@ -142,11 +166,11 @@ namespace PlayerScripts
             }
             else if (IsGrounded)
             {
-                _rigidbody.AddForce(_moveDirection.normalized * (CurrentSpeed * 10f), ForceMode.Force);
+                _rigidbody.AddForce(_moveDirection.normalized * (_currentSpeed * 10f), ForceMode.Force);
             }
             else if (!IsGrounded)
             {
-                _rigidbody.AddForce(_moveDirection.normalized * (CurrentSpeed * 10f * airMultiplier), ForceMode.Force);
+                _rigidbody.AddForce(_moveDirection.normalized * (_currentSpeed * 10f * airMultiplier), ForceMode.Force);
             }
 
             _rigidbody.useGravity = _currentTerrainType != PlayerTerrainType.Slope;
@@ -156,22 +180,22 @@ namespace PlayerScripts
         {
             if (_currentTerrainType == PlayerTerrainType.Slope && _exitingSlope)
             {
-                if (_rigidbody.velocity.magnitude <= CurrentSpeed)
-                {
-                    return;
-                }
-                
-                _rigidbody.velocity = _rigidbody.velocity.normalized * CurrentSpeed;
-            }
-            else
-            {
-                var flatVelocity = new Vector3(_rigidbody.velocity.x, 0, _rigidbody.velocity.z);
-                if (flatVelocity.magnitude <= CurrentSpeed)
+                if (_rigidbody.velocity.magnitude <= _currentSpeed)
                 {
                     return;
                 }
 
-                var limitedVelocity = flatVelocity.normalized * CurrentSpeed;
+                _rigidbody.velocity = _rigidbody.velocity.normalized * _currentSpeed;
+            }
+            else
+            {
+                var flatVelocity = new Vector3(_rigidbody.velocity.x, 0, _rigidbody.velocity.z);
+                if (flatVelocity.magnitude <= _currentSpeed)
+                {
+                    return;
+                }
+
+                var limitedVelocity = flatVelocity.normalized * _currentSpeed;
                 _rigidbody.velocity = new Vector3(limitedVelocity.x, _rigidbody.velocity.y, limitedVelocity.z);
             }
         }
@@ -179,9 +203,9 @@ namespace PlayerScripts
         internal void Jump()
         {
             _exitingSlope = true;
-            
+
             _rigidbody.velocity = new Vector3(_rigidbody.velocity.x, 0f, _rigidbody.velocity.z);
-            
+
             _rigidbody.AddForce(transform.up * jumpForce, ForceMode.Impulse);
 
             StartCoroutine(ResetJump());

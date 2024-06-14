@@ -7,14 +7,14 @@ namespace PlayerScripts
 {
     public class PlayerCam : NetworkBehaviour
     {
-        [Header("Player")]
-        public Player player;
-        
         public float sensitivity = 5f;
 
         public Transform orientation;
         public Transform playerObject;
         public Transform playerHeadBone;
+
+        [SyncVar]
+        internal bool CanTurn;
         
         private Camera _camera;
         private float _xRotation;
@@ -31,28 +31,34 @@ namespace PlayerScripts
             SceneManager.sceneLoaded -= OnSceneLoaded;
         }
         
-        private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        private void OnSceneLoaded(Scene newScene, LoadSceneMode mode)
         {
             if (!isLocalPlayer)
             {
                 return;
             }
-            
-            _camera = Camera.main;
+
+            if (newScene.name != "LobbyScene")
+            {
+                _camera = Camera.main;
+            }
         }
         
-        public override void OnStartLocalPlayer()
+        
+        [TargetRpc]
+        public void RpcResetRotation()
         {
-            if (!isLocalPlayer)
+            _xRotation = 0;
+            _yRotation = 0;
+            
+            if (_camera)
             {
-                return;
+                _camera.transform.rotation = Quaternion.Euler(0, 0, 0);
             }
             
-            
-            // foreach (Transform child in playerObject.transform)
-            // {
-            //     child.gameObject.SetActive(false);
-            // }
+            orientation.rotation = Quaternion.Euler(0, 0, 0);
+            playerObject.rotation = Quaternion.Euler(0, 0, 0);
+            playerHeadBone.rotation = Quaternion.Euler(0, 0, 0);
         }
         
         public void ToggleInput(bool active)
@@ -68,7 +74,7 @@ namespace PlayerScripts
 
         private void Update()
         {
-            if (!isLocalPlayer || GameManager.Instance.IsMeetingActive())
+            if (!isLocalPlayer || !CanTurn || !_camera || GameManager.Instance.IsMeetingActive())
             {
                 return;
             }
@@ -88,6 +94,13 @@ namespace PlayerScripts
             orientation.rotation = Quaternion.Euler(0, _yRotation, 0);
             playerObject.rotation = Quaternion.Euler(0, _yRotation, 0);
             playerHeadBone.rotation = Quaternion.Euler(_xRotation, _yRotation, 0);
+        }
+        
+        
+        [Command]
+        public void CmdSetCanTurn(bool canTurn)
+        {
+            CanTurn = canTurn;
         }
     }
 }

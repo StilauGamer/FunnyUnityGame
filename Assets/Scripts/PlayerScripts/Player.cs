@@ -1,6 +1,8 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using Game;
+using Game.Enums;
+using Game.Models;
 using Mirror;
 using PlayerScripts.Models;
 using UnityEngine;
@@ -11,14 +13,18 @@ namespace PlayerScripts
     public class Player : NetworkBehaviour
     {
         [Header("Player")]
-        public PlayerCam playerCam;
-        public PlayerMovement playerMovement;
-        public ParticleSystem deathParticles;
-
-        
-        [Header("Player UI")]
         public PlayerUI playerUI;
-        
+        public PlayerCam playerCam;
+        public PlayerGame playerGame;
+        public PlayerInput playerInput;
+        public PlayerTasks playerTasks;
+        public PlayerMovement playerMovement;
+
+        public GameObject playerFog;
+        public GameObject playerRenderer;
+        public NetworkTeam networkTeam;
+        public Collider playerWallCollider;
+        public Collider playerGroundCollider;
 
         [Header("Player State")]
         [SyncVar(hook = nameof(OnDeathChanged))]
@@ -42,59 +48,68 @@ namespace PlayerScripts
         [SyncVar(hook = nameof(OnBodyColorChanged))]
         internal Color BodyColor;
         
+        [SyncVar(hook = nameof(OnLobbyChanged))]
+        internal bool InLobby;
         
-        private NetworkIdentity _networkIdentity;
-
+        
         private void Awake()
         {
             DontDestroyOnLoad(gameObject);
         }
         
+        
+        
         public override void OnStartClient()
         {
-            _networkIdentity = GetComponent<NetworkIdentity>();
             if (!isServer)
             {
                 return;
             }
 
-            _networkIdentity.AssignClientAuthority(connectionToClient);
             
-            if (!LobbyManager.Instance.Host)
+            netIdentity.AssignClientAuthority(connectionToClient);
+            InLobby = !LobbyManager.Instance.HasGameStarted();
+            
+            
+            if (LobbyManager.Instance && !LobbyManager.Instance.Host)
             {
                 Debug.Log("Setting host to: " + netId);
                 LobbyManager.Instance.Host = this;
             }
             
             Debug.Log("Adding player to lobby");
-            LobbyManager.Instance.playersInLobby++;
+            LobbyManager.Instance.PlayersInLobby++;
         }
 
         public override void OnStopClient()
         {
             if (isServer)
             {
-                LobbyManager.Instance.playersInLobby--;
+                LobbyManager.Instance.PlayersInLobby--;
             }
         }
 
         public override void OnStartLocalPlayer()
         {
-            var mogusAlive = ModelUtils.GetModel(gameObject, "mogus_alive");
-            var mogusDead = ModelUtils.GetModel(gameObject, "mogus_dead");
-            
-            if (!mogusAlive || !mogusDead)
-            {
-                Debug.LogError("Mogus model not found");
-                return;
-            }
-            
-            mogusAlive = mogusAlive.transform.Find("Cube.001").gameObject;
-            var mogusAliveRenderer = mogusAlive.GetComponent<Renderer>();
-            var mogusDeadRenderer = mogusDead.GetComponent<Renderer>();
-            mogusAliveRenderer.gameObject.SetActive(false);
-            mogusDeadRenderer.gameObject.SetActive(false);
+            playerFog.SetActive(true);
         }
+        
+        
+        
+        [Command]
+        public void CmdChangeDisplayName(string newName)
+        {
+            DisplayName = newName;
+        }
+        
+        [Command]
+        internal void CmdSetPlayerVote(PlayerVote playerVote, NetworkConnectionToClient sender = null)
+        {
+            PlayerVote = playerVote;
+            GameManager.Instance.UpdateVotingResults(sender?.identity.netId ?? 0);
+        }
+        
+        
 
         public void KillNearestPlayer()
         {
@@ -103,12 +118,53 @@ namespace PlayerScripts
                 return;
             }
             
-            #if UNITY_EDITOR
-                CmdKill();
-            #else
-                CmdKillClosestPlayer();
-            #endif
+            CmdKillClosestPlayer();
         }
+        
+        [Command]
+        private void CmdKillClosestPlayer()
+        {
+            var closestPlayer = FindClosestPlayer(gameObject);
+            if (!closestPlayer)
+            {
+                return;
+            }
+
+            var deadPlayer = new DeadPlayer(
+                closestPlayer.netIdentity.connectionToClient,
+                closestPlayer.transform.position,
+                closestPlayer.playerMovement.Orientation,
+                closestPlayer.BodyColor
+            );
+            closestPlayer.ServerKill(deadPlayer);
+            closestPlayer.ServerSetNewTeam("team_dead", false);
+        }
+        
+        [Server]
+        internal void ServerKill(DeadPlayer? deadPlayer = null)
+        {
+            Debug.Log("Player: " + netId + " just got killed");
+            if (IsDead)
+            {
+                return;
+            }
+            
+            IsDead = true;
+            RpcToggleDeathScreen(true);
+            if (deadPlayer.HasValue)
+            {
+                GameManager.Instance.KillPlayer(deadPlayer.Value);
+            }
+            
+            
+            var isGameOver = GameManager.Instance.IsGameOver();
+            if (isGameOver != TeamWon.None)
+            {
+                LobbyManager.Instance.EndGame(isGameOver);
+            }
+        }
+        
+        
         
         public void Respawn()
         {
@@ -119,6 +175,21 @@ namespace PlayerScripts
             }
             
             CmdRespawn();
+        }
+        
+        [Command]
+        private void CmdRespawn()
+        {
+            IsDead = false;
+            RpcToggleDeathScreen(false);
+        }
+        
+        
+        
+        
+        
+        private void OnDeathChanged(bool _, bool _2)
+        {
         }
         
         private void OnBodyColorChanged(Color _, Color newColor)
@@ -166,125 +237,101 @@ namespace PlayerScripts
             }
         }
         
-        private void OnReportBodyChanged(bool _, bool _2)
+        private void OnReportBodyChanged(bool _, bool reporting)
         {
-            if (isLocalPlayer)
+            if (isLocalPlayer && reporting)
             {
                 StartCoroutine(ReportBody());
             }
         }
 
-        private void OnPlayerVoteChanged(PlayerVote _, PlayerVote _2)
+        private void OnPlayerVoteChanged(PlayerVote _, PlayerVote newPlayerVote)
         {
+            Debug.Log("Player: " + netId + " just has voted for: " + newPlayerVote.VotedFor);
             if (isLocalPlayer)
             {
                 playerUI.HideVoteButtons();
             }
         }
         
+        private void OnLobbyChanged(bool _, bool _2)
+        {
+            if (!isClient)
+            {
+                return;
+            }
+            
+            if (InLobby)
+            {
+                Debug.Log("Setting player: " + netId + " to in lobby");
+                var rigidBody = GetComponent<Rigidbody>();
+                rigidBody.constraints = RigidbodyConstraints.FreezeAll;
+                playerRenderer.SetActive(isLocalPlayer);
+                playerGroundCollider.enabled = false;
+                playerWallCollider.enabled = false;
+            }
+            else
+            {
+                Debug.Log("Setting player: " + netId + " to not in lobby");
+                playerRenderer.SetActive(!isLocalPlayer);
+                playerGroundCollider.enabled = true;
+                playerWallCollider.enabled = true;
+            }
+        }
+
+        
+        
         private IEnumerator ReportBody()
         {
             yield return new WaitForSeconds(2.5f);
 
-            GameManager.Instance.ToggleMeeting(true);
+            GameManager.Instance.CmdToggleMeeting(true);
         }
 
+        
 
         [TargetRpc]
-        public void StartMeeting(List<Player> allPlayers)
+        public void RpcStartMeeting(List<VotePlayer> allPlayers)
         {
             playerUI.StartEmergencyUI(allPlayers);
         }
-        
-        public void ReadyForMeeting(bool isReady)
-        {
-            CmdReadyForMeeting(isReady);
-        }
-        
-        private void OnDeathChanged(bool _, bool newDead)
-        {
-            var mogusAlive = ModelUtils.GetModel(gameObject, "mogus_alive");
-            var mogusDead = ModelUtils.GetModel(gameObject, "mogus_dead");
 
-            if (isLocalPlayer)
+        [Server]
+        internal void ServerSetNewTeam(string teamId, bool forceShown)
+        {
+            if (!NetworkServer.active)
             {
                 return;
             }
-            
-            if (!mogusAlive || !mogusDead)
-            {
-                Debug.LogError("Mogus model not found");
-                return;
-            }
-            
-            if (newDead)
-            {
-                mogusAlive.gameObject.SetActive(false);
-                mogusDead.gameObject.SetActive(true);                
-                deathParticles.Play();
-            }
-            else
-            {
-                mogusAlive.gameObject.SetActive(true);
-                mogusDead.gameObject.SetActive(false);
-            }
+
+            networkTeam.teamId = teamId;
+            networkTeam.forceShown = forceShown;
         }
+        
+        
+        
 
         [TargetRpc]
         private void RpcToggleDeathScreen(bool isDead)
         {
-            if (!isLocalPlayer)
-            {
-                return;
-            }
-            
-            playerUI.ToggleDeathScreen(isDead);
+            StartCoroutine(playerUI.ToggleDeathScreen(isDead));
         }
-        
-        [Command]
-        public void CmdChangeDisplayName(string newName)
-        {
-            DisplayName = newName;
-        }
-        
-        [Command(requiresAuthority = false)]
-        private void CmdReadyForMeeting(bool isReady)
-        {
-            IsReadyForMeeting = isReady;
-        }
-        
-        [Command]
-        private void CmdRespawn()
+
+
+        [Server]
+        internal void ServerGameEnded()
         {
             IsDead = false;
-            RpcToggleDeathScreen(false);
-        }
-
-        [Command]
-        private void CmdKill()
-        {
-            IsDead = true;
-            RpcToggleDeathScreen(true);
-        }
-        
-        [Command]
-        private void CmdKillClosestPlayer()
-        {
-            var closestPlayer = FindClosestPlayer(gameObject);
-            if (!closestPlayer)
-            {
-                return;
-            }
-
-            closestPlayer.Kill();
+            IsImposter = false;
+            IsReporting = false;
+            IsReadyForMeeting = false;
+            PlayerVote = new PlayerVote();
+            
+            playerCam.RpcResetRotation();
+            playerMovement.RpcSetConstraints(RigidbodyConstraints.FreezeAll);
+            transform.position = new Vector3(0, 1.26f, 0);
         }
         
-        [Server]
-        private void Kill()
-        {
-            IsDead = true;
-            RpcToggleDeathScreen(true);
-        }
         
         public Player FindClosestPlayer(GameObject self, bool shouldBeDead = false)
         {

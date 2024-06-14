@@ -8,7 +8,6 @@ namespace Networking
     {
         public GameObject backgroundImage;
         
-        public TMP_InputField usernameField;
         public TMP_InputField ipAddressField;
         public Button joinButton;
         public Button hostButton;
@@ -24,10 +23,8 @@ namespace Networking
 
         private void OnJoinButtonClicked()
         {
-            var username = usernameField.text;
             var ipAddress = ipAddressField.text;
             
-            networkManager.playerUsername = username;
             networkManager.networkAddress = ipAddress;
             networkManager.StartClient();
             
@@ -38,10 +35,8 @@ namespace Networking
         
         private void OnHostButtonClicked()
         {
-            var username = usernameField.text;
             var ipAddress = ipAddressField.text;
             
-            networkManager.playerUsername = username;
             networkManager.networkAddress = ipAddress;
             networkManager.StartHost();
             
