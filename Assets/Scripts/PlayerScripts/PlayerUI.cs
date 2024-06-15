@@ -1,12 +1,15 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Extensions;
 using Game;
 using Game.Models;
+using JetBrains.Annotations;
 using Mirror;
 using PlayerScripts.Models;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using UnityEngine.Serialization;
 using UnityEngine.UI;
@@ -19,30 +22,22 @@ namespace PlayerScripts
         [Header("UI")]
         [SerializeField]
         private GameObject deathScreenPrefab;
-        private GameObject _deathScreen;
 
         [SerializeField]
         private GameObject emergencyScreenPrefab;
-        private GameObject _emergencyScreen;
 
         [SerializeField]
         private GameObject reportButtonPrefab;
-        private GameObject _reportButton;
 
         [SerializeField]
         private GameObject bodyReportedPrefab;
-        private GameObject _bodyReportedScreen;
         
         [SerializeField]
         private GameObject imposterScreenPrefab;
-        private GameObject _imposterScreen;
 
         [Header("Lobby UI")]
         [SerializeField]
         private GameObject lobbyUiPrefab;
-
-        private GameObject _lobbyUi;
-        private Image _lobbyStartButtonImage;
 
         [SerializeField]
         private Sprite readyButtonSprite;
@@ -61,6 +56,7 @@ namespace PlayerScripts
         private bool _isReady;
 
 
+        private readonly Dictionary<short, GameObject> _playerUIEffects = new();
         private readonly Dictionary<uint, int> _playerMeetingLocations = new();
         private Player _player;
         private NetworkIdentity _networkIdentity;
@@ -87,17 +83,14 @@ namespace PlayerScripts
                 return;
             }
 
-            if (_reportButton)
+            var closestPlayer = _player.FindClosestPlayer(_player.gameObject, true);
+            if (!closestPlayer)
             {
-                var closestPlayer = _player.FindClosestPlayer(_player.gameObject, true);
-                if (!closestPlayer)
-                {
-                    _reportButton.SetActive(false);
-                    return;
-                }
-
-                _reportButton.SetActive(true);
+                SendUIEffectVisibility(2, false);
+                return;
             }
+
+            SendUIEffectVisibility(2, true);
         }
 
 
@@ -132,7 +125,7 @@ namespace PlayerScripts
 
             if (scene != "LobbyScene")
             {
-                _lobbyUi.SetActive(false);
+                SendUIEffectVisibility(6, false);
             }
 
             switch (scene)
@@ -142,11 +135,11 @@ namespace PlayerScripts
                     _player.playerCam.ToggleInput(true);
                     _player.playerCam.CmdSetCanTurn(false);
                     
-                    _lobbyUi.SetActive(true);
-                    _deathScreen.SetActive(false);
-                    _bodyReportedScreen.SetActive(false);
-                    _emergencyScreen.SetActive(false);
-                    _imposterScreen.SetActive(false);
+                    SendUIEffectVisibility(1, false);
+                    SendUIEffectVisibility(3, false);
+                    SendUIEffectVisibility(4, false);
+                    SendUIEffectVisibility(5, false);
+                    SendUIEffectVisibility(6, true);
 
                     _player.playerGame.CmdReadyForMeeting(false);
                     break;
@@ -155,13 +148,13 @@ namespace PlayerScripts
                     Debug.Log("PlayerUI - OnPlayerReady - GameScene");
                     if (_player.IsImposter)
                     {
-                        _imposterScreen.SetActive(true);
+                        SendUIEffectVisibility(5, true);
                     }
                     
                     _player.playerCam.ToggleInput(false);
                     _player.playerCam.CmdSetCanTurn(true);
 
-                    _emergencyScreen.SetActive(false);
+                    SendUIEffectVisibility(4, false);
 
                     _player.playerGame.CmdReadyForMeeting(false);
                     break;
@@ -170,10 +163,10 @@ namespace PlayerScripts
                     _player.playerCam.ToggleInput(true);
                     _player.playerCam.CmdSetCanTurn(false);
 
-                    _deathScreen.SetActive(false);
-                    _bodyReportedScreen.SetActive(false);
-                    _imposterScreen.SetActive(false);
-                    _emergencyScreen.SetActive(true);
+                    SendUIEffectVisibility(1, false);
+                    SendUIEffectVisibility(3, false);
+                    SendUIEffectVisibility(4, true);
+                    SendUIEffectVisibility(5, false);
 
                     _player.playerGame.CmdReadyForMeeting(true);
                     break;
@@ -185,30 +178,14 @@ namespace PlayerScripts
         [TargetRpc]
         internal void RpcToggleBodyReportedScreen(bool isReported)
         {
-            if (!_bodyReportedScreen)
-            {
-                return;
-            }
-
-            _bodyReportedScreen.SetActive(isReported);
+            SendUIEffectVisibility(3, isReported);
         }
 
         internal IEnumerator ToggleDeathScreen(bool isDead)
         {
-            if (!_deathScreen)
-            {
-                yield break;
-            }
-            
-
-            _deathScreen.SetActive(isDead);
-            if (!isDead)
-            {
-                yield break;
-            }
-
-            yield return new WaitForSeconds(2);
-            _deathScreen.SetActive(false);
+            SendUIEffectVisibility(1, isDead);
+            yield return new WaitForSeconds(2f);
+            SendUIEffectVisibility(1, false);
         }
 
 
@@ -217,49 +194,24 @@ namespace PlayerScripts
         {
             yield return new WaitForSeconds(.1f);
 
-            if (!_deathScreen)
-            {
-                _deathScreen = Instantiate(deathScreenPrefab, GameManager.Instance.canvas.transform);
-                _deathScreen.SetActive(false);
-            }
-
-            if (!_reportButton)
-            {
-                _reportButton = Instantiate(reportButtonPrefab, GameManager.Instance.canvas.transform);
-                _reportButton.SetActive(false);
-            }
-
-            if (!_bodyReportedScreen)
-            {
-                _bodyReportedScreen = Instantiate(bodyReportedPrefab, GameManager.Instance.canvas.transform);
-                _bodyReportedScreen.SetActive(false);
-            }
-
-            if (!_emergencyScreen)
-            {
-                _emergencyScreen = Instantiate(emergencyScreenPrefab, GameManager.Instance.canvas.transform);
-                _emergencyScreen.SetActive(false);
-            }
+            SendUIEffect(1, deathScreenPrefab);
+            SendUIEffectVisibility(1, false);
             
-            if (!_imposterScreen)
-            {
-                _imposterScreen = Instantiate(imposterScreenPrefab, GameManager.Instance.canvas.transform);
-                _imposterScreen.SetActive(_player.IsImposter);
-            }
+            SendUIEffect(2, reportButtonPrefab);
+            SendUIEffectVisibility(2, false);
+            
+            SendUIEffect(3, bodyReportedPrefab);
+            SendUIEffectVisibility(3, false);
+            
+            SendUIEffect(4, emergencyScreenPrefab);
+            SendUIEffectVisibility(4, false);
+            
+            SendUIEffect(5, imposterScreenPrefab);
+            SendUIEffectVisibility(5, false);
 
-            if (!_lobbyUi)
-            {
-                _lobbyUi = Instantiate(lobbyUiPrefab, GameManager.Instance.canvas.transform);
-
-
-                var lobbyStartButton = ModelUtils.GetModel(_lobbyUi, "StartButton");
-                lobbyStartButton.GetComponent<Button>().onClick.AddListener(OnReadyButtonClicked);
-                _lobbyStartButtonImage = lobbyStartButton.GetComponent<Image>();
-
-
-                var lobbyNameField = ModelUtils.GetModel(_lobbyUi, "LobbyName").GetComponent<TMP_InputField>();
-                lobbyNameField.onValueChanged.AddListener(OnLobbyNameChanged);
-            }
+            SendUIEffect(6, lobbyUiPrefab);
+            SetupButtonListener(6, "StartButton", OnReadyButtonClicked);
+            SetupInputListener(6, "LobbyName", OnLobbyNameChanged);
         }
 
         private void OnReadyButtonClicked()
@@ -270,20 +222,26 @@ namespace PlayerScripts
 
         internal void UpdateReadyButton(bool canStart)
         {
-            if (!_lobbyStartButtonImage || !LobbyManager.Instance.Host)
+            if (!LobbyManager.Instance.Host)
             {
+                return;
+            }
+
+            if (!_player)
+            {
+                Debug.LogWarning("Player is null");
                 return;
             }
 
 
             if (LobbyManager.Instance.Host.netId == _player.netId)
             {
-                _lobbyStartButtonImage.sprite = canStart ? startButtonSprite : waitingButtonSprite;
+                SendUIEffectImage(6, "StartButton", canStart ? startButtonSprite : waitingButtonSprite);
                 return;
             }
 
 
-            _lobbyStartButtonImage.sprite = _isReady ? unreadyButtonSprite : readyButtonSprite;
+            SendUIEffectImage(6, "StartButton", _isReady ? unreadyButtonSprite : readyButtonSprite);
         }
 
 
@@ -294,34 +252,12 @@ namespace PlayerScripts
             foreach (var otherPlayer in allPlayers)
             {
                 var boxLocation = _playerMeetingLocations[otherPlayer.NetId];
-                var playerBox = ModelUtils.GetModel(_emergencyScreen, "PlayerBox" + boxLocation);
-
-                var playerVoteButton = ModelUtils.GetModel(playerBox, $"PlayerBox{boxLocation}_VoteButton");
-                if (playerVoteButton)
-                {
-                    playerVoteButton.SetActive(false);
-                }
-
-                var playerReporterBox = ModelUtils.GetModel(playerBox, $"PlayerBox{boxLocation}_Reporter");
-                if (playerReporterBox)
-                {
-                    playerReporterBox.SetActive(false);
-                }
-
-                var playerVoteCount = ModelUtils.GetModel(playerBox, $"PlayerBox{boxLocation}_VoteCount");
-                if (!playerVoteCount)
-                {
-                    continue;
-                }
+                SendUIEffectVisibility(4, "PlayerBox" + boxLocation + "_VoteButton", false);
+                SendUIEffectVisibility(4, "PlayerBox" + boxLocation + "_Reported", false);
                 
-
-
-                var playerVoteCountText = playerVoteCount.GetComponent<TextMeshProUGUI>();
                 var voteCount = allPlayers.Sum(p => p.TargetNetId == otherPlayer.NetId ? 1 : 0);
-
-                
-                playerVoteCount.SetActive(true);
-                playerVoteCountText.text = voteCount.ToString();
+                SendUIEffectVisibility(4, "PlayerBox" + boxLocation + "_Voted", voteCount > 0);
+                SendUIEffectText(4, "PlayerBox" + boxLocation + "_VoteCount", voteCount.ToString());
             }
         }
 
@@ -334,129 +270,51 @@ namespace PlayerScripts
                 Debug.LogWarning("Player not found with netId: " + playerVoted + " - Location: " + location);
                 return;
             }
-
-            var playerBox = ModelUtils.GetModel(_emergencyScreen, "PlayerBox" + location);
-            if (!playerBox)
-            {
-                return;
-            }
-
-            var playerVotedBox = ModelUtils.GetModel(playerBox, $"PlayerBox{location}_Voted");
-            if (playerVotedBox)
-            {
-                playerVotedBox.SetActive(true);
-            }
+            
+            SendUIEffectVisibility(4, "PlayerBox" + location + "_Voted", true);
         }
 
         internal void HideVoteButtons()
         {
             var allLocations = _playerMeetingLocations.Values;
-            var skipButton = ModelUtils.GetModel(_emergencyScreen, "SkipVoteButton");
-            if (skipButton)
-            {
-                skipButton.SetActive(false);
-            }
+            SendUIEffectVisibility(4, "SkipVoteButton", false);
             
             foreach (var location in allLocations)
             {
-                var playerBox = ModelUtils.GetModel(_emergencyScreen, "PlayerBox" + location);
-                if (!playerBox)
-                {
-                    continue;
-                }
-
-                var playerVoteButton = ModelUtils.GetModel(playerBox, $"PlayerBox{location}_VoteButton");
-                if (playerVoteButton)
-                {
-                    playerVoteButton.SetActive(false);
-                }
+                SendUIEffectVisibility(4, "PlayerBox" + location + "_VoteButton", false);
             }
         }
 
         internal void StartEmergencyUI(List<VotePlayer> allPlayers)
         {
             Debug.Log("Starting emergency UI for " + _player.netId);
-            if (!_emergencyScreen)
-            {
-                return;
-            }
-
-            _emergencyScreen.SetActive(true);
+            SendUIEffectVisibility(4, true);
 
             
             var currentCount = 0;
-            var playerList = ModelUtils.GetModel(_emergencyScreen, "PlayerList");
-            if (!playerList)
-            {
-                Debug.LogError("PlayerList not found");
-                return;
-            }
-
-            var skipVoteButton = ModelUtils.GetModel(_emergencyScreen, "SkipVoteButton");
-            skipVoteButton.SetActive(!_player.IsDead);
-            skipVoteButton.GetComponent<Button>().onClick.AddListener(() => OnVoteButtonClicked(0, true));
+            SendUIEffectVisibility(4, "SkipVoteButton", !_player.IsDead);
+            SetupButtonListener(4, "SkipVoteButton", () => OnVoteButtonClicked(0, true));
 
 
             foreach (var otherPlayer in allPlayers)
             {
                 _playerMeetingLocations[otherPlayer.NetId] = currentCount;
-                var playerBox = ModelUtils.GetModel(playerList, "PlayerBox" + currentCount);
-                if (!playerBox)
-                {
-                    continue;
-                }
-
-                playerBox.SetActive(true);
-
-
-                var playerAvatarBox = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_Avatar");
-                if (playerAvatarBox)
-                {
-                    var newColor = otherPlayer.Color;
-                    newColor.a = 1f;
-
-                    playerAvatarBox.GetComponent<RawImage>().color = newColor;
-                }
-
-                var playerNameBox = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_Name");
-                if (playerNameBox)
-                {
-                    playerNameBox.GetComponent<TextMeshProUGUI>().text = otherPlayer.Name + " - " + otherPlayer.NetId;
-                }
-
-                var playerDeadBox = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_Dead");
-                if (playerDeadBox)
-                {
-                    playerDeadBox.SetActive(otherPlayer.IsDead);
-                }
-
-                var playerVoteButton = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_VoteButton");
-                if (playerVoteButton)
-                {
-                    var isButtonActive = otherPlayer.NetId != _player.netId && !otherPlayer.IsDead && !_player.IsDead;
-                    playerVoteButton.SetActive(isButtonActive);
-                    
-                    var button = playerVoteButton.GetComponent<Button>();
-                    button.onClick.AddListener(() => OnVoteButtonClicked(otherPlayer.NetId, false));
-                }
-
-                var playerReporterBox = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_Reported");
-                if (playerReporterBox)
-                {
-                    playerReporterBox.SetActive(otherPlayer.IsReporting);
-                }
-
-                var playerVoteCount = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_VoteCount");
-                if (playerVoteCount)
-                {
-                    playerVoteCount.SetActive(false);
-                }
+                SendUIEffectVisibility(4, "PlayerBox" + currentCount, true);
                 
-                var playerVotedBox = ModelUtils.GetModel(playerBox, $"PlayerBox{currentCount}_Voted");
-                if (playerVotedBox)
-                {
-                    playerVotedBox.SetActive(false);
-                }
+                var newColor = otherPlayer.Color;
+                newColor.a = 1f;
+                SendUIEffectImageColor<RawImage>(4, "PlayerBox" + currentCount + "_Avatar", newColor);
+
+                SendUIEffectText(4, "PlayerBox" + currentCount + "_Name", otherPlayer.Name + " - " + otherPlayer.NetId);
+                SendUIEffectVisibility(4, $"PlayerBox{currentCount}_Dead", otherPlayer.IsDead);
+                
+                var isVoteButtonActive = otherPlayer.NetId != _player.netId && !otherPlayer.IsDead && !_player.IsDead;
+                SendUIEffectVisibility(4, $"PlayerBox{currentCount}_VoteButton", isVoteButtonActive);
+                SetupButtonListener(4, $"PlayerBox{currentCount}_VoteButton", () => OnVoteButtonClicked(otherPlayer.NetId, false));
+                
+                SendUIEffectVisibility(4, $"PlayerBox{currentCount}_Reported", otherPlayer.IsReporting);
+                SendUIEffectVisibility(4, $"PlayerBox{currentCount}_Voted", false);
+                SendUIEffectVisibility(4, $"PlayerBox{currentCount}_VoteCount", false);
 
                 currentCount++;
             }
@@ -473,6 +331,176 @@ namespace PlayerScripts
         private void OnLobbyNameChanged(string displayName)
         {
             _player.CmdChangeDisplayName(displayName);
+        }
+
+        
+        
+        [CanBeNull]
+        internal GameObject GetUIEffect(short key)
+        {
+            return _playerUIEffects.GetValueOrDefault(key);
+        }
+        
+        internal void SendUIEffect(short key, [CanBeNull] GameObject uiEffect)
+        {
+            if (key == -1 || !uiEffect)
+            {
+                return;
+            }
+            
+            var effect = Instantiate(uiEffect, GameManager.Instance.canvas.transform);
+            if (_playerUIEffects.TryAdd(key, effect))
+            {
+                return;
+            }
+
+            Debug.LogError("UI Effect already exists with key: " + key);
+        }
+
+        internal void ClearUIEffect(short key)
+        {
+            if (!_playerUIEffects.Remove(key, out var effect))
+            {
+                return;
+            }
+
+            Destroy(effect);
+        }
+
+        internal void SendUIEffectVisibility(short key, bool visible)
+        {
+            if (!_playerUIEffects.TryGetValue(key, out var effect))
+            {
+                return;
+            }
+            
+            effect.SetActive(visible);
+        }
+        
+        internal void SendUIEffectVisibility(short key, string child, bool visible)
+        {
+            if (!_playerUIEffects.TryGetValue(key, out var effect))
+            {
+                return;
+            }
+
+            var uiTransform = effect.transform.FindChildRecursive(child);
+            if (!uiTransform)
+            {
+                return;
+            }
+            
+            uiTransform.gameObject.SetActive(visible);
+        }
+        
+        internal void SendUIEffectText(short key, string child, string text)
+        {
+            if (!_playerUIEffects.TryGetValue(key, out var effect))
+            {
+                return;
+            }
+
+            var uiTransform = effect.transform.FindChildRecursive(child);
+            if (!uiTransform)
+            {
+                return;
+            }
+
+            var textComponent = uiTransform.GetComponent<TextMeshProUGUI>();
+            if (!textComponent)
+            {
+                return;
+            }
+
+            textComponent.text = text;
+        }
+        
+        internal void SendUIEffectImage(short key, string child, Sprite sprite)
+        {
+            if (!_playerUIEffects.TryGetValue(key, out var effect))
+            {
+                return;
+            }
+
+            var uiTransform = effect.transform.FindChildRecursive(child);
+            if (!uiTransform)
+            {
+                return;
+            }
+
+            var image = uiTransform.GetComponent<Image>();
+            if (!image)
+            {
+                return;
+            }
+
+            image.sprite = sprite;
+        }
+        
+        internal void SendUIEffectImageColor<T>(short key, string child, Color color) where T : MaskableGraphic
+        {
+            if (!_playerUIEffects.TryGetValue(key, out var effect))
+            {
+                return;
+            }
+
+            var uiTransform = effect.transform.FindChildRecursive(child);
+            if (!uiTransform)
+            {
+                return;
+            }
+
+            var image = uiTransform.GetComponent<T>();
+            if (!image)
+            {
+                return;
+            }
+
+            image.color = color;
+        }
+        
+        internal void SetupButtonListener(short key, string child, UnityAction action)
+        {
+            if (!_playerUIEffects.TryGetValue(key, out var effect))
+            {
+                return;
+            }
+
+            var uiTransform = effect.transform.FindChildRecursive(child);
+            if (!uiTransform)
+            {
+                return;
+            }
+
+            var button = uiTransform.GetComponent<Button>();
+            if (!button)
+            {
+                return;
+            }
+
+            button.onClick.AddListener(action);
+        }
+        
+        internal void SetupInputListener(short key, string child, UnityAction<string> action)
+        {
+            if (!_playerUIEffects.TryGetValue(key, out var effect))
+            {
+                return;
+            }
+
+            var uiTransform = effect.transform.FindChildRecursive(child);
+            if (!uiTransform)
+            {
+                return;
+            }
+
+            var inputField = uiTransform.GetComponent<TMP_InputField>();
+            if (!inputField)
+            {
+                return;
+            }
+
+            inputField.onValueChanged.AddListener(action);
         }
     }
 }

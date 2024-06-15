@@ -20,9 +20,8 @@ namespace PlayerScripts
         public PlayerTasks playerTasks;
         public PlayerMovement playerMovement;
 
-        public GameObject playerFog;
-        public GameObject playerRenderer;
         public NetworkTeam networkTeam;
+        public GameObject playerRenderer;
         public Collider playerWallCollider;
         public Collider playerGroundCollider;
 
@@ -87,11 +86,6 @@ namespace PlayerScripts
             {
                 LobbyManager.Instance.PlayersInLobby--;
             }
-        }
-
-        public override void OnStartLocalPlayer()
-        {
-            playerFog.SetActive(true);
         }
         
         

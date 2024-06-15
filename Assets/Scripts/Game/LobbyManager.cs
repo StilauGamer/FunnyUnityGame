@@ -13,10 +13,24 @@ namespace Game
     {
         public static LobbyManager Instance;
 
-        public Color blueColor;
         public Color redColor;
-        public Color whiteColor;
+        public Color blueColor;
         public Color greenColor;
+        public Color pinkColor;
+        public Color orangeColor;
+        public Color yellowColor;
+        public Color blackColor;
+        public Color whiteColor;
+        public Color purpleColor;
+        public Color brownColor;
+        public Color cyanColor;
+        public Color limeColor;
+        public Color maroonColor;
+        public Color roseColor;
+        public Color bananaColor;
+        public Color grayColor;
+        public Color tanColor;
+        public Color coralColor;
         
         [SyncVar(hook = nameof(OnPlayerInLobbyChanged))]
         internal int PlayersInLobby;
@@ -27,6 +41,7 @@ namespace Game
         [SyncVar(hook = nameof(OnGameStartedChanged))]
         private bool _gameStarted;
         private bool CanLobbyStart => (float) _playersReady / PlayersInLobby >= .5f;
+        private List<Color> _colors = new();
         
         
         [SyncVar]
@@ -38,6 +53,11 @@ namespace Game
             if (!Instance)
             {
                 Instance = this;
+                _colors = new List<Color>
+                {
+                    redColor, blueColor, greenColor, pinkColor, orangeColor, yellowColor, blackColor, whiteColor, purpleColor,
+                    brownColor, cyanColor, limeColor, maroonColor, roseColor, bananaColor, grayColor, tanColor, coralColor
+                };
             }
             else
             {
@@ -138,16 +158,16 @@ namespace Game
                 var randomImpostor = Random.Range(0, players.Count);
                 players[randomImpostor].IsImposter = true;
             }
-            
-            
+
+
+            var randomizedColors = _colors.OrderBy(x => Random.value).ToList();
+            for (var i = 0; i < players.Count; i++)
+            {
+                players[i].BodyColor = randomizedColors[i];
+            }
             foreach (var player in players)
             {
-                var randomColor = Random.Range(0, 4);
-                var color = new List<Color>
-                    {blueColor, redColor, whiteColor, greenColor}[randomColor];
                 
-                
-                player.BodyColor = color;
                 player.playerCam.ToggleInput(false);
                 player.playerMovement.RpcSetConstraints(RigidbodyConstraints.FreezeRotation);
             }

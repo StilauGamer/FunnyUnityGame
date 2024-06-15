@@ -1,5 +1,6 @@
 ﻿using Game;
 using Mirror;
+using Tasks;
 using UnityEngine;
 
 namespace PlayerScripts
@@ -22,18 +23,27 @@ namespace PlayerScripts
             }
             
             UpdateInputs();
+            ListenForInputs();
         }
         
         private void UpdateInputs()
         {
             _player.playerMovement.Horizontal = Input.GetAxisRaw("Horizontal");
             _player.playerMovement.Vertical = Input.GetAxisRaw("Vertical");
-            
-            if (_player.IsDead)
+        }
+
+        private void ListenForInputs()
+        {
+            TryJump();
+            if (Input.GetKeyDown(KeyCode.E))
             {
-                return;
-            }
+                var ray = new Ray(_player.playerCam.Camera.transform.position, _player.playerCam.Camera.transform.forward);
+                var interactable = Physics.Raycast(ray, out var hit, 1f)
+                    ? hit.collider.GetComponent<Interactable>()
+                    : null;
             
+                interactable?.Use(_player);
+            }
 
             if (Input.GetKeyDown(KeyCode.Q))
             {
@@ -44,13 +54,6 @@ namespace PlayerScripts
             {
                 _player.KillNearestPlayer();
             }
-
-            if (Input.GetKeyDown(KeyCode.T))
-            {
-                _player.Respawn();
-            }
-            
-            TryJump();
         }
 
         private bool _isHidden;
@@ -59,7 +62,10 @@ namespace PlayerScripts
         
         private void TryJump()
         {
-            if (!Input.GetKey(KeyCode.Space) || !_player.playerMovement.ReadyToJump || !_player.playerMovement.IsGrounded || !_player.playerMovement.canJump)
+            if (!Input.GetKey(KeyCode.Space) ||
+                !_player.playerMovement.ReadyToJump ||
+                !_player.playerMovement.IsGrounded ||
+                !_player.playerMovement.canJump)
             {
                 return;
             }

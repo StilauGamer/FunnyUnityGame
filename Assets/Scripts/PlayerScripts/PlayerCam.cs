@@ -15,14 +15,14 @@ namespace PlayerScripts
 
         [SyncVar]
         internal bool CanTurn;
+        internal Camera Camera;
         
-        private Camera _camera;
         private float _xRotation;
         private float _yRotation;
 
         private void Start()
         {
-            _camera = Camera.main;
+            Camera = Camera.main;
             SceneManager.sceneLoaded += OnSceneLoaded;
         }
 
@@ -40,7 +40,7 @@ namespace PlayerScripts
 
             if (newScene.name != "LobbyScene")
             {
-                _camera = Camera.main;
+                Camera = Camera.main;
             }
         }
         
@@ -51,9 +51,9 @@ namespace PlayerScripts
             _xRotation = 0;
             _yRotation = 0;
             
-            if (_camera)
+            if (Camera)
             {
-                _camera.transform.rotation = Quaternion.Euler(0, 0, 0);
+                Camera.transform.rotation = Quaternion.Euler(0, 0, 0);
             }
             
             orientation.rotation = Quaternion.Euler(0, 0, 0);
@@ -74,12 +74,12 @@ namespace PlayerScripts
 
         private void Update()
         {
-            if (!isLocalPlayer || !CanTurn || !_camera || GameManager.Instance.IsMeetingActive())
+            if (!isLocalPlayer || !CanTurn || !Camera || GameManager.Instance.IsMeetingActive())
             {
                 return;
             }
             
-            _camera.transform.position = transform.position;
+            Camera.transform.position = transform.position;
             
             var mouseX = Input.GetAxisRaw("Mouse X") * Time.deltaTime * sensitivity;
             var mouseY = Input.GetAxisRaw("Mouse Y") * Time.deltaTime * sensitivity;
@@ -90,12 +90,17 @@ namespace PlayerScripts
             _xRotation = Mathf.Clamp(_xRotation, -90f, 90f);
 
             
-            _camera.transform.rotation = Quaternion.Euler(_xRotation, _yRotation, 0);
+            Camera.transform.rotation = Quaternion.Euler(_xRotation, _yRotation, 0);
             orientation.rotation = Quaternion.Euler(0, _yRotation, 0);
             playerObject.rotation = Quaternion.Euler(0, _yRotation, 0);
             playerHeadBone.rotation = Quaternion.Euler(_xRotation, _yRotation, 0);
         }
         
+        
+        public void SetCanTurn(bool canTurn)
+        {
+            CanTurn = canTurn;
+        }
         
         [Command]
         public void CmdSetCanTurn(bool canTurn)
